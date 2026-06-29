@@ -1,0 +1,34 @@
+# Local agent loader pointers
+/AGENTS.md
+/CLAUDE.md
+
+# Android / Gradle
+.gradle/
+/build/
+/*/build/
+local.properties
+.externalNativeBuild/
+.cxx/
+captures/
+
+# Android build outputs
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Signing and secrets
+*.jks
+*.keystore
+keystore.properties
+release.properties
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
