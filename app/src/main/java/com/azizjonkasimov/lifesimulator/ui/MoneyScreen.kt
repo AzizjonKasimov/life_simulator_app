@@ -1,0 +1,283 @@
+package com.azizjonkasimov.lifesimulator.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.azizjonkasimov.lifesimulator.domain.engine.AssetCatalog
+import com.azizjonkasimov.lifesimulator.domain.model.AssetDefinition
+import com.azizjonkasimov.lifesimulator.domain.model.GameState
+import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
+
+@Composable
+internal fun MoneyScreen(
+    state: GameState,
+    netWorth: Int,
+    onDeposit: (Int) -> Unit,
+    onWithdraw: (Int) -> Unit,
+    onPayDebt: (Int) -> Unit,
+    onInvest: (InvestmentType, Int) -> Unit,
+    onSellInvestment: (InvestmentType) -> Unit,
+    onBuyAsset: (String) -> Unit,
+    onSellAsset: (String) -> Unit,
+) {
+    val cash = state.finances.cash
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        item { NetWorthCard(state = state, netWorth = netWorth) }
+        item { SavingsCard(state = state, onDeposit = onDeposit, onWithdraw = onWithdraw) }
+        if (state.finances.debt > 0) {
+            item { DebtCard(state = state, onPayDebt = onPayDebt) }
+        }
+        item { InvestmentsCard(state = state, cash = cash, onInvest = onInvest, onSellInvestment = onSellInvestment) }
+        item { ShopCard(state = state, cash = cash, onBuyAsset = onBuyAsset, onSellAsset = onSellAsset) }
+    }
+}
+
+@Composable
+private fun NetWorthCard(
+    state: GameState,
+    netWorth: Int,
+) {
+    SectionCard(title = "Net Worth", icon = UiIcons.netWorth) {
+        Text(
+            text = money(netWorth),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (netWorth >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MiniStat(label = "Cash", value = money(state.finances.cash), modifier = Modifier.weight(1f))
+            MiniStat(label = "Savings", value = money(state.economy.savings), modifier = Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MiniStat(label = "Invested", value = money(state.economy.investedValue), modifier = Modifier.weight(1f))
+            MiniStat(label = "Debt", value = money(state.finances.debt), modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun SavingsCard(
+    state: GameState,
+    onDeposit: (Int) -> Unit,
+    onWithdraw: (Int) -> Unit,
+) {
+    val cash = state.finances.cash
+    val savings = state.economy.savings
+    SectionCard(
+        title = "Savings",
+        icon = UiIcons.savings,
+        trailing = {
+            Text(
+                text = money(savings),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+    ) {
+        Text(
+            text = "A safe place to park cash. Earns a little interest every week.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ChipFlowRow {
+            MoneyButton(text = "Deposit \$100", enabled = cash >= 100, primary = true) { onDeposit(100) }
+            MoneyButton(text = "Deposit all", enabled = cash > 0, primary = true) { onDeposit(cash) }
+            MoneyButton(text = "Withdraw \$100", enabled = savings >= 100) { onWithdraw(100) }
+            MoneyButton(text = "Withdraw all", enabled = savings > 0) { onWithdraw(savings) }
+        }
+    }
+}
+
+@Composable
+private fun DebtCard(
+    state: GameState,
+    onPayDebt: (Int) -> Unit,
+) {
+    val cash = state.finances.cash
+    val debt = state.finances.debt
+    SectionCard(
+        title = "Debt",
+        icon = UiIcons.debt,
+        trailing = {
+            Text(
+                text = money(debt),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error,
+            )
+        },
+    ) {
+        Text(
+            text = "Debt quietly adds stress every night. Clearing it pays off in calm.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ChipFlowRow {
+            MoneyButton(text = "Pay \$100", enabled = cash >= 100, primary = true) { onPayDebt(100) }
+            MoneyButton(text = "Pay all I can", enabled = cash > 0) { onPayDebt(minOf(cash, debt)) }
+        }
+    }
+}
+
+@Composable
+private fun InvestmentsCard(
+    state: GameState,
+    cash: Int,
+    onInvest: (InvestmentType, Int) -> Unit,
+    onSellInvestment: (InvestmentType) -> Unit,
+) {
+    SectionCard(title = "Investments", icon = UiIcons.invest) {
+        Text(
+            text = "Put money to work. Values swing every week — higher risk, wilder ride.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        InvestmentType.entries.forEach { type ->
+            val holding = state.economy.investments.firstOrNull { it.type == type }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = type.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = type.blurb,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (holding != null) {
+                        Text(
+                            text = "${money(holding.currentValue)}\n${gainLabel(holding.gain)}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (holding.gain >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+                ChipFlowRow {
+                    MoneyButton(text = "Invest ${money(type.minimumBuy)}", enabled = cash >= type.minimumBuy, primary = true) {
+                        onInvest(type, type.minimumBuy)
+                    }
+                    if (cash >= 300 && type.minimumBuy != 300) {
+                        MoneyButton(text = "Invest \$300", enabled = true, primary = true) { onInvest(type, 300) }
+                    }
+                    if (holding != null) {
+                        MoneyButton(text = "Sell all", enabled = true) { onSellInvestment(type) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShopCard(
+    state: GameState,
+    cash: Int,
+    onBuyAsset: (String) -> Unit,
+    onSellAsset: (String) -> Unit,
+) {
+    SectionCard(title = "Lifestyle & Assets", icon = UiIcons.shop) {
+        Text(
+            text = "Spend on things that change how the rest of your life plays.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        AssetCatalog.assets.forEach { asset ->
+            AssetRow(
+                asset = asset,
+                owned = !asset.consumable && asset.id in state.economy.ownedAssets,
+                cash = cash,
+                onBuyAsset = onBuyAsset,
+                onSellAsset = onSellAsset,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AssetRow(
+    asset: AssetDefinition,
+    owned: Boolean,
+    cash: Int,
+    onBuyAsset: (String) -> Unit,
+    onSellAsset: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = asset.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    text = asset.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val upkeep = asset.weeklyUpkeep + asset.rentDelta
+                if (upkeep > 0) {
+                    Text(
+                        text = "${money(upkeep)}/week",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+            }
+            if (owned) {
+                LabelChip(text = "Owned", tone = ChipTone.SUCCESS)
+            }
+        }
+        ChipFlowRow {
+            if (owned) {
+                MoneyButton(text = "Sell (${money(asset.price / 2)})", enabled = true) { onSellAsset(asset.id) }
+            } else {
+                MoneyButton(
+                    text = if (asset.consumable) "Buy ${money(asset.price)}" else "Buy ${money(asset.price)}",
+                    enabled = cash >= asset.price,
+                    primary = true,
+                ) { onBuyAsset(asset.id) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoneyButton(
+    text: String,
+    enabled: Boolean,
+    primary: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val padding = ButtonDefaults.ContentPadding
+    if (primary) {
+        Button(onClick = onClick, enabled = enabled, contentPadding = padding) {
+            Text(text = text, style = MaterialTheme.typography.labelLarge)
+        }
+    } else {
+        OutlinedButton(onClick = onClick, enabled = enabled, contentPadding = padding) {
+            Text(text = text, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+private fun gainLabel(gain: Int): String = if (gain >= 0) "+${money(gain)}" else money(gain)

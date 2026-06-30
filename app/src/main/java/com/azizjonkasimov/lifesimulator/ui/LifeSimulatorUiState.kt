@@ -4,12 +4,16 @@ import com.azizjonkasimov.lifesimulator.domain.model.ActionAvailability
 import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
 import com.azizjonkasimov.lifesimulator.domain.model.DashboardSnapshot
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
+import com.azizjonkasimov.lifesimulator.domain.model.LifeEventDefinition
 
 data class LifeSimulatorUiState(
     val isLoading: Boolean = true,
     val gameState: GameState? = null,
     val actions: List<ActionAvailability> = emptyList(),
     val dashboard: DashboardSnapshot? = null,
+    val pendingDecision: LifeEventDefinition? = null,
+    val netWorth: Int = 0,
+    val weeklyCost: Int = 0,
     val selectedTab: GameTab = GameTab.DASHBOARD,
     val messages: List<String> = emptyList(),
     val lastActionDeltas: List<ActionDelta> = emptyList(),
@@ -17,10 +21,10 @@ data class LifeSimulatorUiState(
 
 enum class GameTab(
     val label: String,
-    val iconText: String,
 ) {
-    DASHBOARD(label = "Dashboard", iconText = "D"),
-    ACTIONS(label = "Actions", iconText = "A"),
-    PROGRESS(label = "Progress", iconText = "P"),
-    HISTORY(label = "History", iconText = "H"),
+    DASHBOARD(label = "Home"),
+    ACTIONS(label = "Actions"),
+    MONEY(label = "Money"),
+    PROGRESS(label = "Stats"),
+    HISTORY(label = "History"),
 }

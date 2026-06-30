@@ -6,14 +6,13 @@ data class GameState(
     val stats: CoreStats,
     val skills: SkillSet,
     val finances: FinanceState,
+    val economy: EconomyState,
     val career: CareerState,
     val jobSearch: JobSearchState,
     val business: BusinessState,
     val relationships: RelationshipState,
     val modifiers: List<LifeModifier>,
-    val dayPlan: DayPlanState,
-    val timedOpportunities: List<TimedOpportunityState>,
-    val opportunityCooldowns: Map<String, Int>,
+    val pendingDecision: PendingDecision?,
     val rngSeed: Long,
     val history: List<HistoryEntry>,
 ) {
@@ -26,6 +25,8 @@ data class GameState(
     val timeRemaining: Int
         get() = calendar.timeRemaining
 
+    val actionsToday: Int
+        get() = calendar.actionsToday
 }
 
 data class LifeProfile(
@@ -36,6 +37,7 @@ data class LifeProfile(
 data class CalendarState(
     val day: Int,
     val timeRemaining: Int,
+    val actionsToday: Int = 0,
 ) {
     val week: Int
         get() = ((day - 1) / 7) + 1
@@ -48,9 +50,6 @@ data class FinanceState(
     val nextBillDueDay: Int,
     val creditScore: Int,
 ) {
-    val netWorth: Int
-        get() = cash - debt
-
     fun normalized(): FinanceState = copy(
         cash = cash.coerceAtLeast(0),
         debt = debt.coerceAtLeast(0),
@@ -63,7 +62,6 @@ data class FinanceState(
 data class CareerState(
     val title: String,
     val level: Int,
-    val xp: Int,
     val reputation: Int,
     val promotionReadiness: Int,
     val salaryPerShift: Int,
@@ -71,48 +69,49 @@ data class CareerState(
 ) {
     fun normalized(): CareerState = copy(
         level = level.coerceAtLeast(if (employed) 1 else 0),
-        xp = xp.coerceAtLeast(0),
         reputation = reputation.coerceIn(0, 100),
         promotionReadiness = promotionReadiness.coerceIn(0, 100),
         salaryPerShift = salaryPerShift.coerceAtLeast(0),
     )
 }
 
+/** A single legible "how close am I to a job" meter, built by applying and prepping. */
 data class JobSearchState(
-    val applicationsSent: Int,
-    val interviewReadiness: Int,
-    val offerProgress: Int,
+    val searchProgress: Int,
 ) {
     fun normalized(): JobSearchState = copy(
-        applicationsSent = applicationsSent.coerceAtLeast(0),
-        interviewReadiness = interviewReadiness.coerceIn(0, 100),
-        offerProgress = offerProgress.coerceIn(0, 100),
+        searchProgress = searchProgress.coerceIn(0, 100),
     )
 }
 
-enum class BusinessStage(val label: String) {
-    IDEA("Idea"),
-    SIDE_HUSTLE("Side Hustle"),
-    RELIABLE_PIPELINE("Reliable Pipeline"),
-    SMALL_BUSINESS("Small Business"),
+enum class BusinessTier(
+    val label: String,
+    val revenuePerClient: Int,
+    val maxClients: Int,
+    val weeklyOverhead: Int,
+    val upgradeCost: Int,
+) {
+    NONE("Not started", revenuePerClient = 0, maxClients = 0, weeklyOverhead = 0, upgradeCost = 0),
+    SIDE_HUSTLE("Side Hustle", revenuePerClient = 45, maxClients = 3, weeklyOverhead = 0, upgradeCost = 500),
+    STUDIO("Studio", revenuePerClient = 80, maxClients = 6, weeklyOverhead = 60, upgradeCost = 1600),
+    AGENCY("Agency", revenuePerClient = 130, maxClients = 12, weeklyOverhead = 140, upgradeCost = 0),
 }
 
+/**
+ * A small business as a legible income engine: paying [clients] times the tier's
+ * rate, scaled by [reputation]. Grow clients, raise reputation, upgrade the tier.
+ */
 data class BusinessState(
-    val stage: BusinessStage,
-    val leads: Int,
-    val activeProjects: Int,
-    val completedProjects: Int,
-    val clientTrust: Int,
+    val tier: BusinessTier,
+    val clients: Int,
     val reputation: Int,
-    val pipelineValue: Int,
 ) {
+    val started: Boolean
+        get() = tier != BusinessTier.NONE
+
     fun normalized(): BusinessState = copy(
-        leads = leads.coerceAtLeast(0),
-        activeProjects = activeProjects.coerceAtLeast(0),
-        completedProjects = completedProjects.coerceAtLeast(0),
-        clientTrust = clientTrust.coerceIn(0, 100),
+        clients = clients.coerceIn(0, tier.maxClients),
         reputation = reputation.coerceIn(0, 100),
-        pipelineValue = pipelineValue.coerceIn(0, 250),
     )
 }
 
@@ -144,39 +143,14 @@ data class LifeModifier(
     fun tick(): LifeModifier = copy(daysRemaining = daysRemaining - 1)
 }
 
-enum class DailyFocus(val label: String) {
-    MONEY("Money"),
-    CAREER("Career"),
-    RECOVERY("Recovery"),
-    SOCIAL("Social"),
-    BALANCED("Balanced"),
-}
-
-data class DayPlanState(
-    val day: Int,
-    val recommendedFocus: DailyFocus,
-    val activeFocus: DailyFocus,
-    val reason: String,
-    val locked: Boolean,
-    val actionsTaken: Int,
-    val focusActionsCompleted: Int,
-    val categoriesCompleted: Set<ActionCategory>,
-)
-
-data class TimedOpportunityState(
-    val id: String,
-    val progress: Int,
-    val target: Int,
-    val baseline: Int,
-    val expiresOnDay: Int,
-)
-
+/** Light, computed overview for the dashboard. Presentation specifics are read from state. */
 data class DashboardSnapshot(
-    val headline: String,
     val status: String,
-    val alerts: List<String>,
-    val pressureSummary: String,
-    val quickActionIds: List<String>,
-    val nextBillLabel: String,
     val netWorth: Int,
+    val weeklyCost: Int,
+    val businessWeeklyNet: Int,
+    val nextBillLabel: String,
+    val pressureSummary: String,
+    val suggestionIds: List<String>,
+    val alerts: List<String>,
 )

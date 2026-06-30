@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -137,8 +135,8 @@ private fun ActionCard(
             }
             ChipFlowRow {
                 LabelChip(text = costText(action), icon = UiIcons.time)
-                if (availability.focusMatch && availability.recommendationReason == null) {
-                    LabelChip(text = "Focus match", icon = Icons.AutoMirrored.Filled.TrendingUp, tone = ChipTone.ACCENT)
+                availability.oddsPercent?.let { odds ->
+                    LabelChip(text = "~$odds% success", icon = UiIcons.decision, tone = ChipTone.WARN)
                 }
             }
             if (availability.previewDeltas.isNotEmpty()) {
@@ -175,18 +173,18 @@ private data class ActionSectionSpec(
 
 private fun actionSectionSpecs(): List<ActionSectionSpec> = listOf(
     ActionSectionSpec("money", "Make Money", UiIcons.money),
-    ActionSectionSpec("career", "Get Hired / Career", UiIcons.career),
+    ActionSectionSpec("career", "Career & Jobs", UiIcons.career),
     ActionSectionSpec("business", "Build Business", UiIcons.business),
     ActionSectionSpec("recover", "Recover", UiIcons.recover),
     ActionSectionSpec("connect", "Connect", UiIcons.connect),
 )
 
 private fun actionSectionKey(action: DailyActionDefinition): String = when {
-    action.id in setOf("temp_shift", "budget_review", "work_shift", "overtime", "client_project") -> "money"
+    action.id in setOf("gig_work", "work_shift", "overtime") -> "money"
+    action.id in setOf("apply_jobs", "interview_prep", "attend_interview", "manager_check_in", "study", "network") -> "career"
     action.category == ActionCategory.BUSINESS -> "business"
     action.category == ActionCategory.WELLBEING -> "recover"
     action.category == ActionCategory.SOCIAL -> "connect"
-    action.id in setOf("send_applications", "interview_prep", "attend_interview", "manager_check_in", "study_course", "networking") -> "career"
-    action.category == ActionCategory.MONEY || action.category == ActionCategory.WORK -> "money"
+    action.category == ActionCategory.WORK || action.category == ActionCategory.MONEY -> "money"
     else -> "career"
 }

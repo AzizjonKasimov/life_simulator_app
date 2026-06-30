@@ -23,6 +23,22 @@ class SaveRepositoryTest {
     }
 
     @Test
+    fun staleSchemaVersionLoadsAsNoSave() = runBlocking {
+        val dao = FakeGameStateDao()
+        dao.saveGameState(
+            GameStateEntity(
+                schemaVersion = GameStateJsonCodec.SCHEMA_VERSION - 1,
+                stateJson = "{}",
+            ),
+        )
+
+        val repository = SaveRepository(dao)
+
+        assertNull(repository.observeGameState().first())
+        assertNull(repository.getGameState())
+    }
+
+    @Test
     fun resetClearsSingleSave() = runBlocking {
         val dao = FakeGameStateDao()
         val repository = SaveRepository(dao)

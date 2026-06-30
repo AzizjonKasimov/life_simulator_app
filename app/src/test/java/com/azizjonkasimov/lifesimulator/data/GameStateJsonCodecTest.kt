@@ -17,11 +17,11 @@ class GameStateJsonCodecTest {
     }
 
     @Test
-    fun entityUsesV4SchemaVersion() {
+    fun entityUsesCurrentSchemaVersion() {
         val state = LifeSimulationEngine().startNewLife()
         val entity = state.toEntity()
 
-        assertEquals(4, entity.schemaVersion)
+        assertEquals(GameStateJsonCodec.SCHEMA_VERSION, entity.schemaVersion)
         assertEquals(state, entity.toDomain())
     }
 }

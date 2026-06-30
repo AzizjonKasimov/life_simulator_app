@@ -19,6 +19,8 @@ data class ActionAvailability(
     val previewDeltas: List<ActionDelta> = emptyList(),
     val focusMatch: Boolean = false,
     val recommendationReason: String? = null,
+    /** For risk actions (interview, find client): the success chance to surface, else null. */
+    val oddsPercent: Int? = null,
 )
 
 enum class ActionCategory(val label: String) {

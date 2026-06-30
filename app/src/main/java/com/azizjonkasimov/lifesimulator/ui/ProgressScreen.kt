@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.azizjonkasimov.lifesimulator.domain.engine.AssetCatalog
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
@@ -42,7 +43,7 @@ internal fun ProgressScreen(
     ) {
         item { CareerSection(state = state) }
         item { BusinessSection(state = state) }
-        item { FinanceSection(state = state) }
+        item { MoneySection(state = state) }
         item { WellbeingSection(state = state) }
         item {
             SectionCard(title = "Relationships", icon = UiIcons.relationships) {
@@ -97,27 +98,19 @@ internal fun ProgressScreen(
 @Composable
 private fun CareerSection(state: GameState) {
     SectionCard(title = "Career", icon = UiIcons.career) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MiniStat(label = "Title", value = state.career.title, modifier = Modifier.weight(1f))
-            MiniStat(
-                label = "Status",
-                value = if (state.career.employed) "Employed" else "Searching",
-                modifier = Modifier.weight(1f),
-            )
-        }
         if (state.career.employed) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MiniStat(label = "Level", value = state.career.level.toString(), modifier = Modifier.weight(1f))
+                MiniStat(label = "Title", value = state.career.title, modifier = Modifier.weight(1f))
                 MiniStat(label = "Shift pay", value = money(state.career.salaryPerShift), modifier = Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MiniStat(label = "Level", value = state.career.level.toString(), modifier = Modifier.weight(1f))
                 MiniStat(label = "Reputation", value = "${state.career.reputation}%", modifier = Modifier.weight(1f))
             }
             StatBar(label = "Promotion", value = state.career.promotionReadiness)
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MiniStat(label = "Applications", value = state.jobSearch.applicationsSent.toString(), modifier = Modifier.weight(1f))
-                MiniStat(label = "Interview", value = "${state.jobSearch.interviewReadiness}%", modifier = Modifier.weight(1f))
-            }
-            StatBar(label = "Offer progress", value = state.jobSearch.offerProgress)
+            MiniStat(label = "Status", value = "Searching for work")
+            StatBar(label = "Job search", value = state.jobSearch.searchProgress)
         }
     }
 }
@@ -125,33 +118,44 @@ private fun CareerSection(state: GameState) {
 @Composable
 private fun BusinessSection(state: GameState) {
     SectionCard(title = "Business", icon = UiIcons.business) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MiniStat(label = "Stage", value = state.business.stage.label, modifier = Modifier.weight(1f))
-            MiniStat(label = "Overhead", value = money(businessOverheadFor(state.business.stage)), modifier = Modifier.weight(1f))
+        if (!state.business.started) {
+            MiniStat(label = "Status", value = "Not started")
+            Text(
+                text = "Launch a side hustle from the Actions tab to start earning weekly.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MiniStat(label = "Tier", value = state.business.tier.label, modifier = Modifier.weight(1f))
+                MiniStat(label = "Clients", value = "${state.business.clients}/${state.business.tier.maxClients}", modifier = Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MiniStat(label = "Per client", value = money(state.business.tier.revenuePerClient), modifier = Modifier.weight(1f))
+                MiniStat(label = "Overhead", value = money(state.business.tier.weeklyOverhead), modifier = Modifier.weight(1f))
+            }
+            StatBar(label = "Reputation", value = state.business.reputation)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MiniStat(label = "Leads", value = state.business.leads.toString(), modifier = Modifier.weight(1f))
-            MiniStat(label = "Active", value = state.business.activeProjects.toString(), modifier = Modifier.weight(1f))
-            MiniStat(label = "Completed", value = state.business.completedProjects.toString(), modifier = Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MiniStat(label = "Trust", value = "${state.business.clientTrust}%", modifier = Modifier.weight(1f))
-            MiniStat(label = "Reputation", value = "${state.business.reputation}%", modifier = Modifier.weight(1f))
-        }
-        StatBar(label = "Pipeline value", value = (state.business.pipelineValue * 100 / 250).coerceIn(0, 100))
     }
 }
 
 @Composable
-private fun FinanceSection(state: GameState) {
-    SectionCard(title = "Finances", icon = UiIcons.finances) {
+private fun MoneySection(state: GameState) {
+    SectionCard(title = "Money", icon = UiIcons.finances) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MiniStat(label = "Cash", value = money(state.finances.cash), modifier = Modifier.weight(1f))
-            MiniStat(label = "Debt", value = money(state.finances.debt), modifier = Modifier.weight(1f))
+            MiniStat(label = "Savings", value = money(state.economy.savings), modifier = Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MiniStat(label = "Weekly bill", value = money(state.finances.weeklyLivingCost), modifier = Modifier.weight(1f))
-            MiniStat(label = "Credit", value = state.finances.creditScore.toString(), modifier = Modifier.weight(1f))
+            MiniStat(label = "Invested", value = money(state.economy.investedValue), modifier = Modifier.weight(1f))
+            MiniStat(label = "Debt", value = money(state.finances.debt), modifier = Modifier.weight(1f))
+        }
+        MiniStat(label = "Credit score", value = state.finances.creditScore.toString())
+        val owned = AssetCatalog.ownedDefinitions(state.economy.ownedAssets)
+        if (owned.isNotEmpty()) {
+            ChipFlowRow {
+                owned.forEach { asset -> LabelChip(text = asset.name, icon = UiIcons.shop, tone = ChipTone.SUCCESS) }
+            }
         }
     }
 }
@@ -172,7 +176,7 @@ private fun SkillSection(skills: SkillSet) {
     SectionCard(title = "Skills", icon = UiIcons.skills) {
         StatBar(label = "Knowledge", value = skills.knowledge.coerceAtMost(100))
         StatBar(label = "Fitness", value = skills.fitness.coerceAtMost(100))
-        StatBar(label = "Career XP", value = skills.career % 100)
+        StatBar(label = "Career", value = skills.career.coerceAtMost(100))
         StatBar(label = "Communication", value = skills.communication.coerceAtMost(100))
         StatBar(label = "Creativity", value = skills.creativity.coerceAtMost(100))
     }

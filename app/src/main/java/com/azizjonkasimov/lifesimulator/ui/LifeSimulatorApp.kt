@@ -28,8 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
-import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
-import com.azizjonkasimov.lifesimulator.domain.model.DashboardSnapshot
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.update.UpdatePrompt
 import com.azizjonkasimov.lifesimulator.update.rememberUpdatePromptState
@@ -45,14 +43,10 @@ fun LifeSimulatorApp(
         uiState.gameState == null -> NewLifeScreen(onStart = viewModel::startNewLife)
         else -> ActiveGameScreen(
             uiState = uiState,
+            viewModel = viewModel,
             currentVersionLabel = updatePromptState.currentVersionLabel,
             updateChecking = updatePromptState.checking,
-            onSelectTab = viewModel::selectTab,
-            onSelectDailyFocus = viewModel::selectDailyFocus,
-            onPerformAction = viewModel::performAction,
-            onAdvanceDay = viewModel::advanceDay,
             onCheckForUpdates = { updatePromptState.checkForUpdates(showResult = true) },
-            onReset = viewModel::resetSave,
         )
     }
     UpdatePrompt(state = updatePromptState)
@@ -79,7 +73,7 @@ private fun NewLifeScreen(
         verticalArrangement = Arrangement.Center,
     ) {
         IconBadgeTile(
-            icon = UiIcons.career,
+            icon = UiIcons.netWorth,
             iconSize = 30.dp,
             padding = 14.dp,
         )
@@ -91,14 +85,14 @@ private fun NewLifeScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Start unemployed with bills due, then build steady work and a client pipeline.",
+            text = "Start broke and in debt. Earn it, save it, invest it, and build a life worth more than its bills.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(24.dp))
         SectionCard(title = "Your start", icon = UiIcons.career) {
             Text(
-                text = "Alex Rivers, 22. Unemployed, $180 cash, $350 debt, modest skills, and one recoverable pressure curve.",
+                text = "Alex Rivers, 22. Unemployed, $180 in cash, $350 in debt. Land work, launch a hustle, and grow your net worth — your call.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -115,14 +109,10 @@ private fun NewLifeScreen(
 @Composable
 private fun ActiveGameScreen(
     uiState: LifeSimulatorUiState,
+    viewModel: LifeSimulatorViewModel,
     currentVersionLabel: String,
     updateChecking: Boolean,
-    onSelectTab: (GameTab) -> Unit,
-    onSelectDailyFocus: (DailyFocus) -> Unit,
-    onPerformAction: (String) -> Unit,
-    onAdvanceDay: () -> Unit,
     onCheckForUpdates: () -> Unit,
-    onReset: () -> Unit,
 ) {
     Scaffold(
         bottomBar = {
@@ -130,7 +120,7 @@ private fun ActiveGameScreen(
                 GameTab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = uiState.selectedTab == tab,
-                        onClick = { onSelectTab(tab) },
+                        onClick = { viewModel.selectTab(tab) },
                         icon = { Icon(imageVector = tab.icon(), contentDescription = tab.label) },
                         label = { Text(text = tab.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         colors = NavigationBarItemDefaults.colors(
@@ -155,7 +145,8 @@ private fun ActiveGameScreen(
         ) {
             AppHeader(
                 state = state,
-                dashboard = dashboard,
+                status = dashboard.status,
+                netWorth = uiState.netWorth,
                 messages = uiState.messages,
                 lastActionDeltas = uiState.lastActionDeltas,
             )
@@ -165,28 +156,47 @@ private fun ActiveGameScreen(
                     state = state,
                     dashboard = dashboard,
                     actions = uiState.actions,
-                    onSelectDailyFocus = onSelectDailyFocus,
-                    onPerformAction = onPerformAction,
-                    onAdvanceDay = onAdvanceDay,
+                    onPerformAction = viewModel::performAction,
+                    onAdvanceDay = viewModel::advanceDay,
                 )
-                GameTab.ACTIONS -> ActionsScreen(actions = uiState.actions, onPerformAction = onPerformAction)
+                GameTab.ACTIONS -> ActionsScreen(actions = uiState.actions, onPerformAction = viewModel::performAction)
+                GameTab.MONEY -> MoneyScreen(
+                    state = state,
+                    netWorth = uiState.netWorth,
+                    onDeposit = viewModel::deposit,
+                    onWithdraw = viewModel::withdraw,
+                    onPayDebt = viewModel::payDebt,
+                    onInvest = viewModel::invest,
+                    onSellInvestment = viewModel::sellInvestment,
+                    onBuyAsset = viewModel::buyAsset,
+                    onSellAsset = viewModel::sellAsset,
+                )
                 GameTab.PROGRESS -> ProgressScreen(
                     state = state,
                     currentVersionLabel = currentVersionLabel,
                     updateChecking = updateChecking,
                     onCheckForUpdates = onCheckForUpdates,
-                    onReset = onReset,
+                    onReset = viewModel::resetSave,
                 )
                 GameTab.HISTORY -> HistoryScreen(history = state.history)
             }
         }
+    }
+
+    uiState.pendingDecision?.let { decision ->
+        DecisionDialog(
+            event = decision,
+            cash = uiState.gameState?.finances?.cash ?: 0,
+            onChoose = viewModel::resolveDecision,
+        )
     }
 }
 
 @Composable
 private fun AppHeader(
     state: GameState,
-    dashboard: DashboardSnapshot,
+    status: String,
+    netWorth: Int,
     messages: List<String>,
     lastActionDeltas: List<ActionDelta>,
 ) {
@@ -211,7 +221,7 @@ private fun AppHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${state.career.title} · ${dashboard.headline}",
+                    text = "${state.career.title} · Day ${state.day}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -222,11 +232,12 @@ private fun AppHeader(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                LabelChip(text = dashboard.status, tone = ChipTone.ACCENT)
+                LabelChip(text = status, tone = ChipTone.ACCENT)
                 Text(
-                    text = "Day ${state.day} · Wk ${state.week}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = "Net ${money(netWorth)}",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = if (netWorth >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
                 )
             }
         }

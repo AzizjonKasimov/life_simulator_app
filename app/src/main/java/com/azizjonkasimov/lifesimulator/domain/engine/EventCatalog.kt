@@ -4,12 +4,16 @@ import com.azizjonkasimov.lifesimulator.domain.model.ActionEffect
 import com.azizjonkasimov.lifesimulator.domain.model.LifeModifier
 import com.azizjonkasimov.lifesimulator.domain.model.LifeEventDefinition
 
+/**
+ * Passive events: small, automatic colour at the start of a day. Decisions that
+ * ask the player to choose live in [DecisionEventCatalog].
+ */
 object EventCatalog {
     val events: List<LifeEventDefinition> = listOf(
         LifeEventDefinition(
             id = "good_sleep",
             title = "Good sleep",
-            description = "A quiet night gives you a better baseline tomorrow.",
+            description = "A quiet night gives you a better baseline today.",
             condition = { it.stats.stress <= 45 },
             effect = ActionEffect(healthDelta = 3, moodDelta = 4, energyDelta = 8),
         ),
@@ -25,7 +29,7 @@ object EventCatalog {
             title = "Small opportunity",
             description = "Someone notices your consistency and a small opening appears.",
             condition = { it.career.reputation >= 35 || it.skills.knowledge >= 30 },
-            effect = ActionEffect(cashDelta = 40, moodDelta = 3, careerXpDelta = 6, promotionReadinessDelta = 5),
+            effect = ActionEffect(cashDelta = 40, moodDelta = 3, careerSkillDelta = 6, promotionReadinessDelta = 5),
         ),
         LifeEventDefinition(
             id = "lonely_evening",
@@ -44,9 +48,9 @@ object EventCatalog {
         LifeEventDefinition(
             id = "mentor_tip",
             title = "Mentor tip",
-            description = "A contact gives you practical advice that speeds up your next step.",
+            description = "A contact gives you advice that speeds up your next step.",
             condition = { it.relationships.network >= 55 && it.career.promotionReadiness >= 45 },
-            effect = ActionEffect(careerXpDelta = 10, reputationDelta = 4, promotionReadinessDelta = 8),
+            effect = ActionEffect(careerSkillDelta = 10, reputationDelta = 4, promotionReadinessDelta = 8),
         ),
         LifeEventDefinition(
             id = "burnout_warning",

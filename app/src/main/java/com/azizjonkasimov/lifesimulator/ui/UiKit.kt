@@ -19,7 +19,12 @@ import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BusinessCenter
@@ -55,9 +60,7 @@ import androidx.compose.ui.unit.dp
 import com.azizjonkasimov.lifesimulator.domain.model.ActionAvailability
 import com.azizjonkasimov.lifesimulator.domain.model.ActionCategory
 import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
-import com.azizjonkasimov.lifesimulator.domain.model.BusinessStage
 import com.azizjonkasimov.lifesimulator.domain.model.DailyActionDefinition
-import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryKind
 
@@ -429,46 +432,8 @@ internal fun costText(action: DailyActionDefinition): String =
     "${action.timeCost}h · ${action.energyCost} energy" +
         if (action.moneyCost > 0) " · ${money(action.moneyCost)}" else ""
 
-internal fun businessOverheadFor(stage: BusinessStage): Int = when (stage) {
-    BusinessStage.IDEA,
-    BusinessStage.SIDE_HUSTLE -> 0
-    BusinessStage.RELIABLE_PIPELINE -> 45
-    BusinessStage.SMALL_BUSINESS -> 90
-}
-
-internal fun totalWeeklyCost(state: GameState): Int =
-    state.finances.weeklyLivingCost + businessOverheadFor(state.business.stage)
-
-internal fun runwayDays(state: GameState): Int {
-    val weekly = totalWeeklyCost(state)
-    return if (weekly <= 0) 0 else (state.finances.cash * 7 / weekly).coerceAtLeast(0)
-}
-
-internal fun pressureMeterValue(state: GameState): Int =
-    maxOf(
-        state.stats.stress,
-        if (state.finances.cash < totalWeeklyCost(state)) 78 else 35,
-        if (!state.career.employed) 62 else 25,
-        (state.finances.debt / 10).coerceIn(0, 100),
-    ).coerceIn(0, 100)
-
-internal fun opportunityTitle(id: String): String = when (id) {
-    "bill_buffer" -> "Bill Buffer"
-    "recovery_window" -> "Recovery Window"
-    "promotion_push" -> "Promotion Push"
-    "reconnect" -> "Reconnect"
-    "debt_brake" -> "Debt Brake"
-    else -> id
-}
-
-internal fun opportunityDescription(id: String): String = when (id) {
-    "bill_buffer" -> "Reach a cash buffer before bills hit."
-    "recovery_window" -> "Bring stress down before burnout compounds."
-    "promotion_push" -> "Finish the current promotion push in time."
-    "reconnect" -> "Complete social actions or rebuild relationship average."
-    "debt_brake" -> "Reduce debt enough to relieve credit pressure."
-    else -> "Complete this timed pressure opportunity."
-}
+internal fun runwayDays(state: GameState, weeklyCost: Int): Int =
+    if (weeklyCost <= 0) 0 else (state.finances.cash * 7 / weeklyCost).coerceAtLeast(0)
 
 // ---------------------------------------------------------------------------
 // Icon mapping
@@ -477,43 +442,33 @@ internal fun opportunityDescription(id: String): String = when (id) {
 internal fun GameTab.icon(): ImageVector = when (this) {
     GameTab.DASHBOARD -> Icons.Filled.Dashboard
     GameTab.ACTIONS -> Icons.AutoMirrored.Filled.FormatListBulleted
+    GameTab.MONEY -> Icons.Filled.AccountBalanceWallet
     GameTab.PROGRESS -> Icons.Filled.BarChart
     GameTab.HISTORY -> Icons.Filled.History
 }
 
 internal fun statusIcon(state: GameState): ImageVector = when {
     !state.career.employed -> Icons.Filled.Search
-    state.business.activeProjects > 0 -> Icons.Filled.BusinessCenter
+    state.business.started && state.business.clients > 0 -> Icons.Filled.BusinessCenter
     state.stats.stress >= 75 -> Icons.Filled.Warning
     state.career.promotionReadiness >= 75 -> Icons.AutoMirrored.Filled.TrendingUp
     else -> Icons.Filled.Person
 }
 
-internal fun focusIcon(focus: DailyFocus): ImageVector = when (focus) {
-    DailyFocus.MONEY -> Icons.Filled.AttachMoney
-    DailyFocus.CAREER -> Icons.Filled.Work
-    DailyFocus.RECOVERY -> Icons.Filled.Favorite
-    DailyFocus.SOCIAL -> Icons.Filled.Groups
-    DailyFocus.BALANCED -> Icons.Filled.Dashboard
-}
-
 internal fun actionIcon(action: DailyActionDefinition): ImageVector = when (action.id) {
-    "temp_shift",
+    "gig_work",
     "work_shift",
-    "overtime",
-    "budget_review" -> Icons.Filled.AttachMoney
-    "send_applications" -> Icons.AutoMirrored.Filled.Assignment
-    "interview_prep" -> Icons.Filled.School
+    "overtime" -> Icons.Filled.AttachMoney
+    "apply_jobs" -> Icons.AutoMirrored.Filled.Assignment
+    "interview_prep",
+    "study" -> Icons.Filled.School
     "attend_interview" -> Icons.Filled.Work
     "manager_check_in",
-    "study_course",
-    "networking" -> Icons.AutoMirrored.Filled.TrendingUp
-    "research_offer",
-    "find_leads",
-    "pitch_client",
-    "client_project",
-    "improve_offer",
-    "invest_tools" -> Icons.Filled.BusinessCenter
+    "network" -> Icons.AutoMirrored.Filled.TrendingUp
+    "launch_business",
+    "find_client",
+    "marketing",
+    "upgrade_business" -> Icons.Filled.BusinessCenter
     "exercise" -> Icons.Filled.FitnessCenter
     "rest" -> Icons.Filled.Favorite
     "cook_at_home" -> Icons.Filled.Restaurant
@@ -527,17 +482,6 @@ internal fun actionIcon(action: DailyActionDefinition): ImageVector = when (acti
         ActionCategory.MONEY -> Icons.Filled.AttachMoney
         ActionCategory.BUSINESS -> Icons.Filled.BusinessCenter
     }
-}
-
-internal fun energyIcon(): ImageVector = Icons.Filled.Bolt
-
-internal fun opportunityIcon(id: String): ImageVector = when (id) {
-    "bill_buffer" -> Icons.Filled.CreditCard
-    "recovery_window" -> Icons.Filled.Favorite
-    "promotion_push" -> Icons.AutoMirrored.Filled.TrendingUp
-    "reconnect" -> Icons.Filled.Groups
-    "debt_brake" -> Icons.Filled.MoneyOff
-    else -> Icons.Filled.Event
 }
 
 internal fun HistoryKind.label(): String = when (this) {
@@ -578,6 +522,11 @@ internal object UiIcons {
     val career = Icons.Filled.Work
     val jobSearch = Icons.Filled.Search
     val money = Icons.Filled.AttachMoney
+    val netWorth = Icons.Filled.AccountBalanceWallet
+    val savings = Icons.Filled.Savings
+    val invest = Icons.AutoMirrored.Filled.ShowChart
+    val shop = Icons.Filled.ShoppingCart
+    val decision = Icons.Filled.Casino
     val recover = Icons.Filled.Favorite
     val connect = Icons.Filled.Groups
     val skills = Icons.Filled.School

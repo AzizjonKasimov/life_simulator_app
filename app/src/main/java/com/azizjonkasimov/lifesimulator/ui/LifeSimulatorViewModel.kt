@@ -9,8 +9,9 @@ import androidx.lifecycle.viewModelScope
 import com.azizjonkasimov.lifesimulator.data.SaveRepository
 import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
 import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
-import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
+import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
+import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
 import kotlinx.coroutines.launch
 
 class LifeSimulatorViewModel(
@@ -36,49 +37,31 @@ class LifeSimulatorViewModel(
     fun startNewLife() {
         viewModelScope.launch {
             val gameState = engine.startNewLife()
-            messages = listOf("Started a new life.")
+            messages = listOf("A fresh start.")
             lastActionDeltas = emptyList()
             repository.saveGameState(gameState)
         }
     }
 
     fun performAction(actionId: String) {
-        val state = currentGameState ?: return
-        val result = engine.performAction(state, actionId)
-        viewModelScope.launch {
-            messages = result.errorMessage?.let { listOf(it) } ?: result.messages
-            lastActionDeltas = result.actionDeltas
-            if (result.success) {
-                repository.saveGameState(result.state)
-            } else {
-                rebuildState(isLoading = false)
-            }
-        }
+        dispatch(deltasFromResult = true) { engine.performAction(it, actionId) }
     }
 
     fun advanceDay() {
-        val state = currentGameState ?: return
-        val result = engine.advanceDay(state)
-        viewModelScope.launch {
-            messages = result.messages
-            lastActionDeltas = emptyList()
-            repository.saveGameState(result.state)
-        }
+        dispatch { engine.advanceDay(it) }
     }
 
-    fun selectDailyFocus(focus: DailyFocus) {
-        val state = currentGameState ?: return
-        val result = engine.selectDailyFocus(state, focus)
-        viewModelScope.launch {
-            messages = result.errorMessage?.let { listOf(it) } ?: result.messages
-            lastActionDeltas = emptyList()
-            if (result.success) {
-                repository.saveGameState(result.state)
-            } else {
-                rebuildState(isLoading = false)
-            }
-        }
+    fun resolveDecision(choiceId: String) {
+        dispatch { engine.resolveDecision(it, choiceId) }
     }
+
+    fun deposit(amount: Int) = dispatch { engine.deposit(it, amount) }
+    fun withdraw(amount: Int) = dispatch { engine.withdraw(it, amount) }
+    fun payDebt(amount: Int) = dispatch { engine.payDebt(it, amount) }
+    fun invest(type: InvestmentType, amount: Int) = dispatch { engine.invest(it, type, amount) }
+    fun sellInvestment(type: InvestmentType) = dispatch { engine.sellInvestment(it, type) }
+    fun buyAsset(assetId: String) = dispatch { engine.buyAsset(it, assetId) }
+    fun sellAsset(assetId: String) = dispatch { engine.sellAsset(it, assetId) }
 
     fun resetSave() {
         viewModelScope.launch {
@@ -98,6 +81,24 @@ class LifeSimulatorViewModel(
         rebuildState(isLoading = false, selectedTab = tab)
     }
 
+    /** Runs an engine operation, surfaces its messages, and persists on success. */
+    private fun dispatch(
+        deltasFromResult: Boolean = false,
+        operation: (GameState) -> SimulationResult,
+    ) {
+        val state = currentGameState ?: return
+        val result = operation(state)
+        viewModelScope.launch {
+            messages = result.errorMessage?.let { listOf(it) } ?: result.messages
+            lastActionDeltas = if (deltasFromResult) result.actionDeltas else emptyList()
+            if (result.success) {
+                repository.saveGameState(result.state)
+            } else {
+                rebuildState(isLoading = false)
+            }
+        }
+    }
+
     private fun rebuildState(
         isLoading: Boolean,
         selectedTab: GameTab = uiState.selectedTab,
@@ -108,6 +109,9 @@ class LifeSimulatorViewModel(
             gameState = state,
             actions = state?.let(engine::actionAvailability).orEmpty(),
             dashboard = state?.let(engine::dashboardSnapshot),
+            pendingDecision = state?.let(engine::pendingDecisionEvent),
+            netWorth = state?.let(engine::netWorth) ?: 0,
+            weeklyCost = state?.let(engine::weeklyLivingTotal) ?: 0,
             selectedTab = selectedTab,
             messages = messages,
             lastActionDeltas = lastActionDeltas,
