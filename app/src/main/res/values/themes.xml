@@ -1,9 +1,10 @@
 <resources>
-    <style name="Theme.LifeSimulator" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.LifeSimulator" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">@android:color/white</item>
-        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">#FF0B0F18</item>
+        <item name="android:statusBarColor">#FF0B0F18</item>
+        <item name="android:navigationBarColor">#FF0B0F18</item>
     </style>
 </resources>
