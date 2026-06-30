@@ -1,5 +1,6 @@
 import java.io.FileInputStream
 import java.util.Properties
+import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -101,4 +102,38 @@ dependencies {
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
+}
+
+tasks.register("copyReleaseApkToRoot") {
+    group = "distribution"
+    description = "Copies the signed release APK to the project root for phone installation."
+
+    doLast {
+        val builtApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
+        val unsignedApk = layout.buildDirectory.file("outputs/apk/release/app-release-unsigned.apk").get().asFile
+        if (!builtApk.exists()) {
+            if (unsignedApk.exists()) {
+                logger.warn(
+                    "Unsigned release APK was produced, so no root install APK was copied. " +
+                        "Create local release signing files first; see README.md.",
+                )
+                return@doLast
+            }
+            throw GradleException("Release APK was not produced. Run assembleRelease first.")
+        }
+
+        val versionName = android.defaultConfig.versionName ?: "dev"
+        val versionedApk = rootProject.file("LifeSimulator-$versionName.apk")
+        val latestApk = rootProject.file("LifeSimulator-latest.apk")
+        builtApk.copyTo(versionedApk, overwrite = true)
+        builtApk.copyTo(latestApk, overwrite = true)
+        logger.lifecycle("Install APK copied to ${latestApk.path}")
+        logger.lifecycle("Versioned APK copied to ${versionedApk.path}")
+    }
+}
+
+afterEvaluate {
+    tasks.named("assembleRelease") {
+        finalizedBy("copyReleaseApkToRoot")
+    }
 }

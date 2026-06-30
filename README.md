@@ -30,6 +30,14 @@ Use PowerShell from the repo root:
 .\gradlew.bat testDebugUnitTest
 ```
 
+Signed release builds copy the install APK into the repo root:
+
+```powershell
+.\gradlew.bat assembleRelease
+```
+
+After a signed release build, use `LifeSimulator-latest.apk` from the root folder for phone installation. A versioned copy such as `LifeSimulator-0.1.0.apk` is kept there too.
+
 ## App Updates
 
 Life Simulator uses a GitHub Releases-based updater for side-loaded installs. The app checks:
@@ -40,7 +48,7 @@ https://raw.githubusercontent.com/AzizjonKasimov/life-simulator-app-releases/mai
 
 When `versionCode` is newer than the installed app, it downloads the APK from the release manifest and opens Android's package installer. The first install and every update must be signed with the same local release key.
 
-For the first phone install, download the APK from the latest release in `AzizjonKasimov/life-simulator-app-releases`. After that, the in-app updater can fetch newer release APKs from the same channel.
+For the first phone install, use `LifeSimulator-latest.apk` from the repo root after a signed release build, or download the APK from the latest release in `AzizjonKasimov/life-simulator-app-releases`. After that, the in-app updater can fetch newer release APKs from the same channel.
 
 Release signing uses local, gitignored files:
 
