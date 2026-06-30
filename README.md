@@ -4,7 +4,7 @@ A personal Android dashboard-style life simulator game. The first milestone is a
 
 ## Status
 
-Repository bootstrap is in place. The Android project has not been scaffolded yet.
+V1 is a native Android systems-first prototype with a playable daily decision loop.
 
 ## Product Direction
 
@@ -18,18 +18,25 @@ Repository bootstrap is in place. The Android project has not been scaffolded ye
 - Jetpack Compose
 - Material 3
 - Gradle version catalog
-- Room for durable simulation state when persistence is introduced
-- DataStore for settings when needed
+- Room for durable simulation state
 
 ## Development
 
-After the Android project is scaffolded, use PowerShell from the repo root:
+Use PowerShell from the repo root:
 
 ```powershell
 .\gradlew.bat assembleDebug
 .\gradlew.bat installDebug
 .\gradlew.bat testDebugUnitTest
 ```
+
+## Game Loop
+
+Start a fictional young-adult life from one of three archetypes: Student, Junior Worker, or Freelancer. Each day gives limited time and energy for actions such as work, study, exercise, rest, socializing, and freelancing. Actions affect money, health, mood, stress, social life, knowledge, fitness, and career progress.
+
+## License
+
+MIT License. See [LICENSE](LICENSE).
 
 ## Agent Instructions
 
