@@ -30,6 +30,31 @@ Use PowerShell from the repo root:
 .\gradlew.bat testDebugUnitTest
 ```
 
+## App Updates
+
+Life Simulator uses a GitHub Releases-based updater for side-loaded installs. The app checks:
+
+```text
+https://raw.githubusercontent.com/AzizjonKasimov/life-simulator-app-releases/main/version.json
+```
+
+When `versionCode` is newer than the installed app, it downloads the APK from the release manifest and opens Android's package installer. The first install and every update must be signed with the same local release key.
+
+For the first phone install, download the APK from the latest release in `AzizjonKasimov/life-simulator-app-releases`. After that, the in-app updater can fetch newer release APKs from the same channel.
+
+Release signing uses local, gitignored files:
+
+- `release.keystore`
+- `keystore.properties`
+
+Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish a release with:
+
+```powershell
+.\release.ps1 -VersionName 0.2.0 -VersionCode 2 -Notes "New actions and balance changes."
+```
+
+The script builds a signed APK, publishes `LifeSimulator-<version>.apk` to `AzizjonKasimov/life-simulator-app-releases`, and updates `version.json` for the in-app updater.
+
 ## Game Loop
 
 Start a fictional young-adult life from one of three archetypes: Student, Junior Worker, or Freelancer. Each day gives limited time and energy for actions such as work, study, exercise, rest, socializing, and freelancing. Actions affect money, health, mood, stress, social life, knowledge, fitness, and career progress.

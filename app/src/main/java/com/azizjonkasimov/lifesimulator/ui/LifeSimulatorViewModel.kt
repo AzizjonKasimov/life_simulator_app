@@ -68,6 +68,11 @@ class LifeSimulatorViewModel(
         }
     }
 
+    fun showMessage(message: String) {
+        messages = listOf(message)
+        rebuildState(isLoading = false)
+    }
+
     fun selectTab(tab: GameTab) {
         rebuildState(isLoading = false, selectedTab = tab)
     }

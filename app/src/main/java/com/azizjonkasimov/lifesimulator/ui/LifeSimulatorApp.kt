@@ -42,23 +42,30 @@ import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryEntry
 import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
+import com.azizjonkasimov.lifesimulator.update.UpdatePrompt
+import com.azizjonkasimov.lifesimulator.update.rememberUpdatePromptState
 
 @Composable
 fun LifeSimulatorApp(
     viewModel: LifeSimulatorViewModel,
 ) {
     val uiState = viewModel.uiState
+    val updatePromptState = rememberUpdatePromptState(onMessage = viewModel::showMessage)
     when {
         uiState.isLoading -> LoadingScreen()
         uiState.gameState == null -> NewLifeScreen(onStart = viewModel::startNewLife)
         else -> ActiveGameScreen(
             uiState = uiState,
+            currentVersionLabel = updatePromptState.currentVersionLabel,
+            updateChecking = updatePromptState.checking,
             onSelectTab = viewModel::selectTab,
             onPerformAction = viewModel::performAction,
             onAdvanceDay = viewModel::advanceDay,
+            onCheckForUpdates = { updatePromptState.checkForUpdates(showResult = true) },
             onReset = viewModel::resetSave,
         )
     }
+    UpdatePrompt(state = updatePromptState)
 }
 
 @Composable
@@ -128,9 +135,12 @@ private fun NewLifeScreen(
 @Composable
 private fun ActiveGameScreen(
     uiState: LifeSimulatorUiState,
+    currentVersionLabel: String,
+    updateChecking: Boolean,
     onSelectTab: (GameTab) -> Unit,
     onPerformAction: (String) -> Unit,
     onAdvanceDay: () -> Unit,
+    onCheckForUpdates: () -> Unit,
     onReset: () -> Unit,
 ) {
     Scaffold(
@@ -160,7 +170,13 @@ private fun ActiveGameScreen(
                 GameTab.DASHBOARD -> DashboardTab(state = state, onAdvanceDay = onAdvanceDay)
                 GameTab.ACTIONS -> ActionsTab(actions = uiState.actions, onPerformAction = onPerformAction)
                 GameTab.HISTORY -> HistoryTab(history = state.history)
-                GameTab.PROGRESS -> ProgressTab(state = state, onReset = onReset)
+                GameTab.PROGRESS -> ProgressTab(
+                    state = state,
+                    currentVersionLabel = currentVersionLabel,
+                    updateChecking = updateChecking,
+                    onCheckForUpdates = onCheckForUpdates,
+                    onReset = onReset,
+                )
             }
         }
     }
@@ -358,6 +374,9 @@ private fun HistoryTab(history: List<HistoryEntry>) {
 @Composable
 private fun ProgressTab(
     state: GameState,
+    currentVersionLabel: String,
+    updateChecking: Boolean,
+    onCheckForUpdates: () -> Unit,
     onReset: () -> Unit,
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
@@ -377,6 +396,13 @@ private fun ProgressTab(
         }
         item {
             WeeklySummary(state = state)
+        }
+        item {
+            AppUpdateSection(
+                currentVersionLabel = currentVersionLabel,
+                updateChecking = updateChecking,
+                onCheckForUpdates = onCheckForUpdates,
+            )
         }
         item {
             HorizontalDivider()
@@ -411,6 +437,56 @@ private fun ProgressTab(
             title = { Text(text = "Reset this life?") },
             text = { Text(text = "This clears the current single save and returns to the archetype picker.") },
         )
+    }
+}
+
+@Composable
+private fun AppUpdateSection(
+    currentVersionLabel: String,
+    updateChecking: Boolean,
+    onCheckForUpdates: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "App Updates",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        text = "Installed version",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = currentVersionLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+                OutlinedButton(
+                    enabled = !updateChecking,
+                    onClick = onCheckForUpdates,
+                ) {
+                    Text(text = if (updateChecking) "Checking" else "Check")
+                }
+            }
+            if (updateChecking) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        }
     }
 }
 
