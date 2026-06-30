@@ -9,7 +9,11 @@ data class HistoryEntry(
 
 enum class HistoryKind {
     ACTION,
+    CAREER,
     DAY,
     EVENT,
+    FINANCE,
+    GOAL,
+    RELATIONSHIP,
     SYSTEM,
 }

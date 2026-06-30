@@ -11,7 +11,8 @@ class AppContainer(context: Context) {
         context.applicationContext,
         LifeSimulatorDatabase::class.java,
         "life_simulator.db",
-    ).build()
+    ).fallbackToDestructiveMigration()
+        .build()
 
     val repository: SaveRepository = SaveRepository(database.gameStateDao())
     val engine: LifeSimulationEngine = LifeSimulationEngine()

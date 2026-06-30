@@ -86,6 +86,7 @@ class LifeSimulatorViewModel(
             isLoading = isLoading,
             gameState = state,
             actions = state?.let(engine::actionAvailability).orEmpty(),
+            dashboard = state?.let(engine::dashboardSnapshot),
             selectedTab = selectedTab,
             messages = messages,
         )
