@@ -1,16 +1,22 @@
 # Life Simulator App
 
-A personal Android dashboard-style life simulator game. The first milestone is a local debug install on a phone, not a Play Store release.
+A personal Android dashboard-style life simulator game. It side-loads onto a phone as a signed APK and updates itself from GitHub Releases — not a Play Store app.
 
 ## Status
 
-V0.5 is a native Android command-center life simulator with one normal unemployed-person start and a deeper money loop. It has job search into steady work, career promotion, a client-service side business pipeline, finances, relationships, deterministic events, auto-suggested daily focus, timed pressure opportunities, action result chips, and a cleaner game-like HUD with icons and meters.
+v0.8.0. You start broke and in debt, and the goal is to grow your **net worth** — the always-visible score. Earn money from gigs, a steady job, and a side business, then save it, invest it, pay down debt, and buy life-changing assets. Interviews, client wins, market swings, and decision dilemmas are seeded gambles, so outcomes are uncertain but a given save replays identically.
+
+Recent passes:
+
+- **v0.7.0** reinvented the core loop around a real economy (savings, investments, assets, net worth as the score), blocking decision events, and visible risk/luck — and retired the old daily-focus autopilot and timed-opportunity systems that made it play itself.
+- **v0.8.0** is a legibility + UX pass: savings interest is now shown (lifetime earned + next-payday projection), an opt-in **Auto-Save & Invest** sweeps a chosen share of spare cash into savings/investments each payday, and the Actions tab gained category filters over compact, scannable rows.
 
 ## Product Direction
 
-- Playable dashboard-first life simulation.
-- Phone-friendly surfaces for money status, career/business progression, wellbeing, relationships, activities, events, history, and controls.
+- Playable dashboard-first life simulation; net worth is the throughline.
+- Phone-friendly surfaces for money, career, business, wellbeing, relationships, daily actions, decisions, and history.
 - Local-first gameplay with no backend, accounts, telemetry, or Play Store release plumbing until explicitly needed.
+- Keep it legible and player-driven: few meters at a time, money always has something to do, and the game never auto-plays the optimal move.
 
 ## Stack
 
@@ -18,7 +24,7 @@ V0.5 is a native Android command-center life simulator with one normal unemploye
 - Jetpack Compose
 - Material 3
 - Gradle version catalog
-- Room for durable simulation state
+- Room (with KSP) for durable simulation state
 
 ## Development
 
@@ -36,9 +42,9 @@ Signed release builds copy the install APK into the repo root:
 .\gradlew.bat assembleRelease
 ```
 
-After a signed release build, use `LifeSimulator-latest.apk` from the root folder for phone installation. A versioned copy such as `LifeSimulator-0.5.0.apk` is kept there too.
+After a signed release build, use `LifeSimulator-latest.apk` from the root folder for phone installation. A versioned copy such as `LifeSimulator-0.8.0.apk` is kept there too.
 
-The V0.5 rebuild uses Room database version `4` and JSON schema version `4`. Updating from V0.4 resets the old local save so the single-start job, career, and business state can start cleanly. New saves are stored as `schemaVersion + stateJson` so future simulator systems can evolve without frequent table rewrites.
+Saves use Room database version `5` and JSON schema version `5`, stored as `schemaVersion + stateJson` so simulator systems can evolve without frequent table rewrites. The v0.7.0 reinvention reset pre-0.7 saves (schema `4` → `5`); since then, new fields are added backward-compatibly, so existing saves carry across updates. A save whose schema doesn't match — or fails to decode — is treated as "no save" and the app starts a fresh life instead of crashing.
 
 ## App Updates
 
@@ -57,27 +63,29 @@ Release signing uses local, gitignored files:
 - `release.keystore`
 - `keystore.properties`
 
-Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish the V0.5 release with:
+Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish a release with:
 
 ```powershell
-.\release.ps1 -VersionName 0.5.0 -VersionCode 5 -Notes "Career, business, and money-making upgrade with a single normal start."
+.\release.ps1 -VersionName 0.8.0 -VersionCode 8 -Notes "Interest visibility, auto-allocation, and a faster Actions screen."
 ```
 
-The script builds a signed APK, publishes `LifeSimulator-<version>.apk` to `AzizjonKasimov/life-simulator-app-releases`, and updates `version.json` for the in-app updater.
+The script bumps the version, builds a signed APK, publishes `LifeSimulator-<version>.apk` to `AzizjonKasimov/life-simulator-app-releases`, and updates `version.json` for the in-app updater. The version bump in this repo is left uncommitted for review.
 
 ## Game Loop
 
-Start as Alex Rivers, a normal unemployed 22-year-old with $180 cash, $350 debt, bills coming due, modest skills, and one recoverable pressure curve. Each day starts with an auto-suggested focus: Money, Career, Recovery, Social, or Balanced. The player can override it before the first action, then the focus locks for the day.
+Start as Alex Rivers, a 22-year-old who's unemployed, with $180 in cash, $350 in debt, and a weekly living bill due every seven days. Net worth — cash + savings + investments + asset resale − debt — starts negative, and growing it is the game.
 
-Each day gives limited time and energy for work, growth, business, wellbeing, social, and money actions. Matching the day's focus gives small bonuses, and completing the focus at day end gives a modest stability reward. Ignoring a non-balanced focus adds light stress and mood pressure.
+Each day gives a limited time and energy budget to spend on actions across making money, career, business, wellbeing, and relationships. Ending the day settles the week whenever a bill is due: business income lands, savings earn interest, investments swing, the living bill is paid (or rolls into debt), and any opt-in auto-allocation sweeps spare cash into savings or investments. The night may then roll a passive event or hand you a decision dilemma.
 
-The money loop now has two connected tracks. Job search actions build applications, interview readiness, and offer progress until the first steady job unlocks. Employed actions pay salary, build reputation, and push promotion readiness; promotions increase title, level, and shift pay. Business actions build an offer, find leads, pitch clients, complete paid projects, improve the pipeline, and grow through business stages. Weekly business overhead starts only after the business reaches a reliable pipeline.
+**Money (the Money tab).** Park cash in savings for steady weekly interest (with the lifetime total and next payday shown), invest in Index funds, Stocks, or Crypto — each with its own seeded weekly swing — pay down debt, and buy assets that change how the rest of the game plays: a car (better gig pay), a nicer apartment (mood up, rent up), a gym, a laptop, a therapist, insurance, or a getaway. **Auto-Save & Invest** moves a set percentage of each payday's leftover cash automatically, so you don't have to allocate by hand.
 
-Timed opportunities add short pressure events such as building a bill buffer, lowering stress, pushing promotion readiness, reconnecting socially, or reducing debt. Active opportunities appear on the dashboard and can complete or expire with small consequences.
+**Career.** While unemployed, applying and prepping build a single job-search bar; once it's high enough, attending an interview is a seeded, skill-weighted gamble with visible odds — a hire, a callback, or a rejection. Once employed, shifts, check-ins, and study fill a promotion bar that delivers titled, better-paid level-ups.
 
-The dashboard now prioritizes the money loop first: identity/status, cash/runway/debt, job offer or salary progress, business pipeline, next bill pressure, daily focus, up to three priority actions, active opportunities, and the recent log. The Actions tab is grouped by Make Money, Get Hired / Career, Build Business, Recover, and Connect. The Progress tab shows status sections only: Career, Business, Finances, Wellbeing, Relationships, Skills, and App Updates.
+**Business.** Launch a side hustle and grow it as a legible income engine: sign clients (a seeded chance improved by reputation), run marketing, and reinvest to upgrade tiers (Side Hustle → Studio → Agency) for more clients and higher rates. Each week pays clients × rate, scaled by reputation, minus overhead.
 
-Choices affect cash, debt, bills, credit, job-search progress, business leads, active projects, client trust, pipeline value, career XP, promotion readiness, health, mood, stress, relationships, modifiers, action history, and events. Long-term goals/checklists were removed in V0.5; progression now lives directly in the career, business, money, wellbeing, relationship, daily focus, and timed opportunity systems.
+**Decisions & risk.** Authored dilemmas pause the game with real tradeoffs — a risky gig, a friend's loan, a costly repair, a wedding across the country — and several resolve as seeded gambles. Interviews, client wins, investment weeks, and decision outcomes all flow from one save seed, so risk is fair and a save replays identically.
+
+**Surfaces.** Five tabs: **Home** (status, cash flow, career and business at a glance, what to do next, and the recent log), **Actions** (category filters over compact action rows), **Money**, **Stats** (career, business, money, wellbeing, relationships, skills, and app updates), and **History**.
 
 ## License
 
