@@ -1,7 +1,6 @@
 package com.azizjonkasimov.lifesimulator.data
 
 import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
-import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -15,7 +14,7 @@ class SaveRepositoryTest {
     fun saveLoadsAfterRepositoryRecreation() = runBlocking {
         val dao = FakeGameStateDao()
         val firstRepository = SaveRepository(dao)
-        val savedState = LifeSimulationEngine().startNewLife(LifeArchetype.FREELANCER)
+        val savedState = LifeSimulationEngine().startNewLife()
 
         firstRepository.saveGameState(savedState)
         val secondRepository = SaveRepository(dao)
@@ -27,7 +26,7 @@ class SaveRepositoryTest {
     fun resetClearsSingleSave() = runBlocking {
         val dao = FakeGameStateDao()
         val repository = SaveRepository(dao)
-        val savedState = LifeSimulationEngine().startNewLife(LifeArchetype.STUDENT)
+        val savedState = LifeSimulationEngine().startNewLife()
 
         repository.saveGameState(savedState)
         repository.resetSave()

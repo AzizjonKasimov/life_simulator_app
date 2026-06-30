@@ -15,13 +15,32 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.BusinessCenter
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoneyOff
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -46,6 +65,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -55,15 +75,14 @@ import androidx.compose.ui.unit.dp
 import com.azizjonkasimov.lifesimulator.domain.model.ActionAvailability
 import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
 import com.azizjonkasimov.lifesimulator.domain.model.ActionCategory
+import com.azizjonkasimov.lifesimulator.domain.model.BusinessStage
 import com.azizjonkasimov.lifesimulator.domain.model.CoreStats
 import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
 import com.azizjonkasimov.lifesimulator.domain.model.DailyActionDefinition
 import com.azizjonkasimov.lifesimulator.domain.model.DashboardSnapshot
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
-import com.azizjonkasimov.lifesimulator.domain.model.GoalState
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryEntry
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryKind
-import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
 import com.azizjonkasimov.lifesimulator.domain.model.TimedOpportunityState
@@ -106,7 +125,7 @@ private fun LoadingScreen() {
 
 @Composable
 private fun NewLifeScreen(
-    onStart: (LifeArchetype) -> Unit,
+    onStart: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -122,12 +141,12 @@ private fun NewLifeScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Start a fictional young-adult life and manage the dashboard: cash, career, health, stress, relationships, goals, and time.",
+                text = "Start unemployed with a few bills due, then build steady work and a client pipeline.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        items(LifeArchetype.entries) { archetype ->
+        item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -137,20 +156,20 @@ private fun NewLifeScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        text = archetype.displayName,
+                        text = "Normal start",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = archetype.summary,
+                        text = "Alex Rivers, 22. Unemployed, $180 cash, $350 debt, modest skills, and one recoverable pressure curve.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(
-                        onClick = { onStart(archetype) },
+                        onClick = onStart,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(text = "Start as ${archetype.displayName}")
+                        Text(text = "Start Life")
                     }
                 }
             }
@@ -235,22 +254,44 @@ private fun Header(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = dashboard.headline,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "${state.profile.name}, ${state.profile.age} - ${state.career.title}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Icon(
+                        imageVector = statusIcon(state),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier
+                            .padding(9.dp)
+                            .size(26.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = state.profile.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${state.career.title} - ${dashboard.headline}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             StatusBadge(text = dashboard.status)
         }
+        HudStrip(state = state, dashboard = dashboard)
         AnimatedVisibility(visible = messages.isNotEmpty() || lastActionDeltas.isNotEmpty()) {
             Surface(
                 modifier = Modifier
@@ -274,6 +315,92 @@ private fun Header(
                         DeltaChipRow(deltas = lastActionDeltas)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HudStrip(
+    state: GameState,
+    dashboard: DashboardSnapshot,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        IconMetricPill(
+            icon = Icons.Filled.AttachMoney,
+            label = "Cash",
+            value = money(state.finances.cash),
+            modifier = Modifier.weight(1f),
+        )
+        IconMetricPill(
+            icon = Icons.Filled.MoneyOff,
+            label = "Debt",
+            value = money(state.finances.debt),
+            modifier = Modifier.weight(1f),
+        )
+        IconMetricPill(
+            icon = Icons.Filled.AccessTime,
+            label = "Time",
+            value = "${state.timeRemaining}h",
+            modifier = Modifier.weight(1f),
+        )
+        IconMetricPill(
+            icon = Icons.Filled.Favorite,
+            label = "Energy",
+            value = "${state.stats.energy}%",
+            modifier = Modifier.weight(1f),
+        )
+    }
+    Text(
+        text = "${dashboard.nextBillLabel} - Net ${money(dashboard.netWorth)}",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
+private fun IconMetricPill(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+            Column {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -310,9 +437,11 @@ private fun DashboardTab(
         modifier = Modifier.fillMaxSize(),
     ) {
         item {
-            TodayPlanCard(
+            MoneyLoopCard(state = state, dashboard = dashboard)
+        }
+        item {
+            FocusHudRow(
                 state = state,
-                dashboard = dashboard,
                 onSelectDailyFocus = onSelectDailyFocus,
             )
         }
@@ -322,28 +451,11 @@ private fun DashboardTab(
             }
         }
         item {
-            DashboardMetricGrid(state = state, dashboard = dashboard)
-        }
-        if (dashboard.alerts.isNotEmpty()) {
-            item {
-                AlertPanel(alerts = dashboard.alerts)
-            }
-        }
-        item {
-            dashboard.focusGoal?.let { FocusGoalCard(goal = it) }
-        }
-        item {
-            QuickActions(
+            PriorityActions(
                 dashboard = dashboard,
                 actions = actions,
                 onPerformAction = onPerformAction,
             )
-        }
-        item {
-            WellbeingPanel(stats = state.stats)
-        }
-        item {
-            CareerRelationshipPanel(state = state)
         }
         item {
             RecentLog(history = state.history)
@@ -355,33 +467,41 @@ private fun DashboardTab(
 }
 
 @Composable
-private fun TodayPlanCard(
+private fun FocusHudRow(
     state: GameState,
-    dashboard: DashboardSnapshot,
     onSelectDailyFocus: (DailyFocus) -> Unit,
 ) {
-    SectionCard(title = "Today's Plan") {
-        Text(
-            text = dashboard.pressureSummary,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    SectionCard(title = "Daily Focus") {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = state.dayPlan.activeFocus.label,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = focusIcon(state.dayPlan.activeFocus),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
                 )
-                Text(
-                    text = state.dayPlan.reason,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = state.dayPlan.activeFocus.label,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = state.dayPlan.reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Pill(text = if (state.dayPlan.locked) "Locked" else "Open")
         }
@@ -390,11 +510,256 @@ private fun TodayPlanCard(
             enabled = !state.dayPlan.locked,
             onSelectDailyFocus = onSelectDailyFocus,
         )
-        Text(
-            text = focusProgressText(state),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = focusProgressText(state),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state.dayPlan.activeFocus != state.dayPlan.recommendedFocus) {
+                Text(
+                    text = "Suggested: ${state.dayPlan.recommendedFocus.label}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun MoneyLoopCard(
+    state: GameState,
+    dashboard: DashboardSnapshot,
+) {
+    val totalWeeklyCost = totalWeeklyCost(state)
+    val runwayDays = if (totalWeeklyCost <= 0) 0 else (state.finances.cash * 7 / totalWeeklyCost).coerceAtLeast(0)
+    val careerProgress = if (state.career.employed) state.career.promotionReadiness else state.jobSearch.offerProgress
+    val careerLabel = if (state.career.employed) {
+        "${money(state.career.salaryPerShift)} shift pay"
+    } else {
+        "${state.jobSearch.applicationsSent} apps - ${state.jobSearch.interviewReadiness}% ready"
+    }
+    SectionCard(title = "Money Loop") {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MeterTile(
+                icon = if (state.career.employed) Icons.Filled.Work else Icons.Filled.Search,
+                label = if (state.career.employed) "Career" else "Job offer",
+                value = careerLabel,
+                progress = careerProgress,
+                modifier = Modifier.weight(1f),
+            )
+            MeterTile(
+                icon = Icons.Filled.BusinessCenter,
+                label = "Business",
+                value = "${state.business.leads} leads - ${state.business.activeProjects} active",
+                progress = (state.business.pipelineValue * 100 / 250).coerceIn(0, 100),
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            IconMetricTile(
+                icon = Icons.Filled.Event,
+                label = "Next bill",
+                value = dashboard.nextBillLabel,
+                modifier = Modifier.weight(1f),
+            )
+            IconMetricTile(
+                icon = Icons.Filled.CreditCard,
+                label = "Runway",
+                value = "${runwayDays}d",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        MeterRow(
+            icon = Icons.Filled.Warning,
+            label = "Pressure",
+            value = pressureMeterValue(state),
+            reverseGood = true,
         )
+        Text(
+            text = dashboard.pressureSummary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (dashboard.alerts.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                dashboard.alerts.take(3).forEach { alert ->
+                    IconBadge(icon = Icons.Filled.Warning, text = alert)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeterTile(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    progress: Int,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0, 100) / 100f },
+                modifier = Modifier.fillMaxWidth(),
+                color = meterColor(progress),
+            )
+        }
+    }
+}
+
+@Composable
+private fun IconMetricTile(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeterRow(
+    icon: ImageVector,
+    label: String,
+    value: Int,
+    reverseGood: Boolean = false,
+) {
+    val progress = value.coerceIn(0, 100)
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = meterColor(progress, reverseGood),
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(text = label, style = MaterialTheme.typography.bodyMedium)
+            }
+            Text(text = "$progress%", style = MaterialTheme.typography.bodyMedium)
+        }
+        LinearProgressIndicator(
+            progress = { progress / 100f },
+            modifier = Modifier.fillMaxWidth(),
+            color = meterColor(progress, reverseGood),
+        )
+    }
+}
+
+@Composable
+private fun IconBadge(
+    icon: ImageVector,
+    text: String,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -422,7 +787,7 @@ private fun FocusPicker(
 
 @Composable
 private fun OpportunityPanel(state: GameState) {
-    SectionCard(title = "Timed Opportunities") {
+    SectionCard(title = "Opportunities") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             state.timedOpportunities.forEach { opportunity ->
                 OpportunityRow(opportunity = opportunity, day = state.day)
@@ -442,11 +807,22 @@ private fun OpportunityRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = opportunityTitle(opportunity.id),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Icon(
+                    imageVector = opportunityIcon(opportunity.id),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = opportunityTitle(opportunity.id),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             Pill(text = "${(opportunity.expiresOnDay - day + 1).coerceAtLeast(0)}d")
         }
         Text(
@@ -481,66 +857,15 @@ private fun EndDayButton(onAdvanceDay: () -> Unit) {
 }
 
 @Composable
-private fun DashboardMetricGrid(
-    state: GameState,
-    dashboard: DashboardSnapshot,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricCard(label = "Cash", value = money(state.finances.cash), modifier = Modifier.weight(1f))
-            MetricCard(label = "Debt", value = money(state.finances.debt), modifier = Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricCard(label = "Time", value = "${state.timeRemaining}h", modifier = Modifier.weight(1f))
-            MetricCard(label = "Energy", value = "${state.stats.energy}%", modifier = Modifier.weight(1f))
-            MetricCard(label = "Net", value = money(dashboard.netWorth), modifier = Modifier.weight(1f))
-        }
-        MetricCard(
-            label = "Next bill",
-            value = dashboard.nextBillLabel,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
-private fun AlertPanel(alerts: List<String>) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        shape = MaterialTheme.shapes.medium,
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = "Alerts",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            alerts.forEach {
-                Text(text = it, style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-    }
-}
-
-@Composable
-private fun FocusGoalCard(goal: GoalState) {
-    SectionCard(title = "Focus Goal") {
-        GoalRow(goal = goal)
-    }
-}
-
-@Composable
-private fun QuickActions(
+private fun PriorityActions(
     dashboard: DashboardSnapshot,
     actions: List<ActionAvailability>,
     onPerformAction: (String) -> Unit,
 ) {
-    val quickActions = dashboard.quickActionIds.mapNotNull { id -> actions.firstOrNull { it.action.id == id } }
-    SectionCard(title = "Quick Actions") {
+    val quickActions = dashboard.quickActionIds
+        .mapNotNull { id -> actions.firstOrNull { it.action.id == id } }
+        .take(3)
+    SectionCard(title = "Priority Actions") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             quickActions.forEach { availability ->
                 CompactActionRow(
@@ -564,17 +889,37 @@ private fun CompactActionRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = MaterialTheme.shapes.small,
+        ) {
+            Icon(
+                imageVector = actionIcon(action),
+                contentDescription = action.category.label,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .padding(8.dp)
+                    .size(20.dp),
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = action.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = availability.recommendationReason ?: costText(action),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = action.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                IconBadge(
+                    icon = recommendationIcon(availability),
+                    text = availability.recommendationReason ?: action.category.label,
+                )
+            }
             DeltaChipRow(deltas = availability.previewDeltas.take(4))
         }
         Button(
@@ -610,26 +955,6 @@ private fun WellbeingPanel(stats: CoreStats) {
 }
 
 @Composable
-private fun CareerRelationshipPanel(state: GameState) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionCard(title = "Career") {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = state.career.title, fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = "Level ${state.career.level} - ${state.career.reputation}% reputation - ${money(state.career.salaryPerShift)} per shift",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                StatBar(label = "Promotion", value = state.career.promotionReadiness)
-            }
-        }
-        SectionCard(title = "Relationships") {
-            RelationshipBars(relationships = state.relationships)
-        }
-    }
-}
-
-@Composable
 private fun RecentLog(history: List<HistoryEntry>) {
     SectionCard(title = "Recent Log") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -650,6 +975,29 @@ private fun RecentLog(history: List<HistoryEntry>) {
 }
 
 @Composable
+private fun SectionHeader(
+    icon: ImageVector,
+    title: String,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
 private fun ActionsTab(
     actions: List<ActionAvailability>,
     onPerformAction: (String) -> Unit,
@@ -659,38 +1007,18 @@ private fun ActionsTab(
             .thenByDescending { it.isAvailable && it.focusMatch }
             .thenBy { it.action.category.ordinal },
     )
-    val recommended = sortedActions.filter { it.isAvailable && it.recommendationReason != null }.take(5)
-    val recommendedIds = recommended.map { it.action.id }.toSet()
-    val grouped = sortedActions.filterNot { it.action.id in recommendedIds }.groupBy { it.action.category }
+    val sections = actionSectionSpecs()
+    val grouped = sortedActions.groupBy { actionSectionKey(it.action) }
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(bottom = 72.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        if (recommended.isNotEmpty()) {
-            item {
-                Text(
-                    text = "Recommended",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            items(recommended, key = { it.action.id }) { availability ->
-                ActionCard(
-                    availability = availability,
-                    onPerformAction = onPerformAction,
-                )
-            }
-        }
-        ActionCategory.entries.forEach { category ->
-            val categoryActions = grouped[category].orEmpty()
+        sections.forEach { section ->
+            val categoryActions = grouped[section.key].orEmpty()
             if (categoryActions.isNotEmpty()) {
                 item {
-                    Text(
-                        text = category.label,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    SectionHeader(icon = section.icon, title = section.label)
                 }
                 items(categoryActions, key = { it.action.id }) { availability ->
                     ActionCard(
@@ -721,29 +1049,55 @@ private fun ActionCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Top,
             ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Icon(
+                        imageVector = actionIcon(action),
+                        contentDescription = action.category.label,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier
+                            .padding(9.dp)
+                            .size(22.dp),
+                    )
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = action.title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = action.description,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Pill(text = availability.recommendationReason ?: action.category.label)
+                IconBadge(
+                    icon = recommendationIcon(availability),
+                    text = availability.recommendationReason ?: action.category.label,
+                )
             }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Pill(text = costText(action))
-                action.tags.forEach { Pill(text = it) }
+                IconBadge(icon = Icons.Filled.AccessTime, text = costText(action))
+                if (
+                    availability.focusMatch &&
+                    availability.recommendationReason?.contains("focus", ignoreCase = true) != true
+                ) {
+                    IconBadge(icon = Icons.AutoMirrored.Filled.TrendingUp, text = "Focus")
+                }
+                action.tags.take(2).forEach { Pill(text = it) }
                 action.effectSummary().forEach { Pill(text = it) }
             }
             DeltaChipRow(deltas = availability.previewDeltas)
@@ -790,22 +1144,24 @@ private fun ProgressTab(
             )
         }
         item {
-            SectionCard(title = "Goals") {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    state.goals.forEach { GoalRow(goal = it) }
-                }
-            }
+            CareerSection(state = state)
         }
         item {
-            SkillSection(skills = state.skills)
+            BusinessSection(state = state)
         }
         item {
             FinanceSection(state = state)
         }
         item {
+            WellbeingPanel(stats = state.stats)
+        }
+        item {
             SectionCard(title = "Relationships") {
                 RelationshipBars(relationships = state.relationships)
             }
+        }
+        item {
+            SkillSection(skills = state.skills)
         }
         if (state.modifiers.isNotEmpty()) {
             item {
@@ -861,7 +1217,7 @@ private fun ProgressTab(
                 }
             },
             title = { Text(text = "Reset this life?") },
-            text = { Text(text = "This clears the current single save and returns to the archetype picker.") },
+            text = { Text(text = "This clears the current single save and returns to the start screen.") },
         )
     }
 }
@@ -922,6 +1278,54 @@ private fun SkillSection(skills: SkillSet) {
             StatBar(label = "Communication", value = skills.communication.coerceAtMost(100))
             StatBar(label = "Creativity", value = skills.creativity.coerceAtMost(100))
         }
+    }
+}
+
+@Composable
+private fun CareerSection(state: GameState) {
+    SectionCard(title = "Career") {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            InlineMetric(label = "Title", value = state.career.title, modifier = Modifier.weight(1f))
+            InlineMetric(
+                label = "Status",
+                value = if (state.career.employed) "Employed" else "Searching",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (state.career.employed) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                InlineMetric(label = "Level", value = state.career.level.toString(), modifier = Modifier.weight(1f))
+                InlineMetric(label = "Shift pay", value = money(state.career.salaryPerShift), modifier = Modifier.weight(1f))
+                InlineMetric(label = "Reputation", value = "${state.career.reputation}%", modifier = Modifier.weight(1f))
+            }
+            StatBar(label = "Promotion", value = state.career.promotionReadiness)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                InlineMetric(label = "Applications", value = state.jobSearch.applicationsSent.toString(), modifier = Modifier.weight(1f))
+                InlineMetric(label = "Interview", value = "${state.jobSearch.interviewReadiness}%", modifier = Modifier.weight(1f))
+            }
+            StatBar(label = "Offer progress", value = state.jobSearch.offerProgress)
+        }
+    }
+}
+
+@Composable
+private fun BusinessSection(state: GameState) {
+    SectionCard(title = "Business") {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            InlineMetric(label = "Stage", value = state.business.stage.label, modifier = Modifier.weight(1f))
+            InlineMetric(label = "Overhead", value = money(businessOverheadFor(state.business.stage)), modifier = Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            InlineMetric(label = "Leads", value = state.business.leads.toString(), modifier = Modifier.weight(1f))
+            InlineMetric(label = "Active", value = state.business.activeProjects.toString(), modifier = Modifier.weight(1f))
+            InlineMetric(label = "Completed", value = state.business.completedProjects.toString(), modifier = Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            InlineMetric(label = "Trust", value = "${state.business.clientTrust}%", modifier = Modifier.weight(1f))
+            InlineMetric(label = "Reputation", value = "${state.business.reputation}%", modifier = Modifier.weight(1f))
+        }
+        StatBar(label = "Pipeline value", value = (state.business.pipelineValue * 100 / 250).coerceIn(0, 100))
     }
 }
 
@@ -989,65 +1393,6 @@ private fun RelationshipBars(relationships: RelationshipState) {
 }
 
 @Composable
-private fun GoalRow(goal: GoalState) {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = goal.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Pill(text = if (goal.isComplete) "Done" else goal.category.label)
-        }
-        Text(
-            text = goal.description,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        LinearProgressIndicator(
-            progress = { goal.percent / 100f },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            text = "${goal.progress.coerceAtMost(goal.target)} / ${goal.target}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun MetricCard(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
 private fun InlineMetric(
     label: String,
     value: String,
@@ -1106,13 +1451,26 @@ private fun StatBar(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = metricIcon(label),
+                    contentDescription = null,
+                    tint = meterColor(displayValue, reverseGood),
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(text = label, style = MaterialTheme.typography.bodyMedium)
+            }
             Text(text = "$displayValue%", style = MaterialTheme.typography.bodyMedium)
         }
         LinearProgressIndicator(
-            progress = { if (reverseGood) 1f - normalized else normalized },
+            progress = { normalized },
             modifier = Modifier.fillMaxWidth(),
+            color = meterColor(displayValue, reverseGood),
         )
     }
 }
@@ -1198,8 +1556,18 @@ private fun opportunityDescription(id: String): String = when (id) {
     "promotion_push" -> "Finish the current promotion push in time."
     "reconnect" -> "Complete social actions or rebuild relationship average."
     "debt_brake" -> "Reduce debt enough to relieve credit pressure."
-    else -> "Complete this timed pressure goal."
+    else -> "Complete this timed pressure opportunity."
 }
+
+private fun businessOverheadFor(stage: BusinessStage): Int = when (stage) {
+    BusinessStage.IDEA,
+    BusinessStage.SIDE_HUSTLE -> 0
+    BusinessStage.RELIABLE_PIPELINE -> 45
+    BusinessStage.SMALL_BUSINESS -> 90
+}
+
+private fun totalWeeklyCost(state: GameState): Int =
+    state.finances.weeklyLivingCost + businessOverheadFor(state.business.stage)
 
 private fun signed(value: Int): String = if (value > 0) "+$value" else value.toString()
 
@@ -1210,13 +1578,145 @@ private fun GameTab.icon(): ImageVector = when (this) {
     GameTab.HISTORY -> Icons.Filled.History
 }
 
+private fun statusIcon(state: GameState): ImageVector = when {
+    !state.career.employed -> Icons.Filled.Search
+    state.business.activeProjects > 0 -> Icons.Filled.BusinessCenter
+    state.stats.stress >= 75 -> Icons.Filled.Warning
+    state.career.promotionReadiness >= 75 -> Icons.AutoMirrored.Filled.TrendingUp
+    else -> Icons.Filled.Person
+}
+
+private fun focusIcon(focus: DailyFocus): ImageVector = when (focus) {
+    DailyFocus.MONEY -> Icons.Filled.AttachMoney
+    DailyFocus.CAREER -> Icons.Filled.Work
+    DailyFocus.RECOVERY -> Icons.Filled.Favorite
+    DailyFocus.SOCIAL -> Icons.Filled.Groups
+    DailyFocus.BALANCED -> Icons.Filled.Dashboard
+}
+
+private fun actionIcon(action: DailyActionDefinition): ImageVector = when (action.id) {
+    "temp_shift",
+    "work_shift",
+    "overtime",
+    "budget_review" -> Icons.Filled.AttachMoney
+    "send_applications" -> Icons.AutoMirrored.Filled.Assignment
+    "interview_prep" -> Icons.Filled.School
+    "attend_interview" -> Icons.Filled.Work
+    "manager_check_in",
+    "study_course",
+    "networking" -> Icons.AutoMirrored.Filled.TrendingUp
+    "research_offer",
+    "find_leads",
+    "pitch_client",
+    "client_project",
+    "improve_offer",
+    "invest_tools" -> Icons.Filled.BusinessCenter
+    "exercise" -> Icons.Filled.FitnessCenter
+    "rest" -> Icons.Filled.Favorite
+    "cook_at_home" -> Icons.Filled.Restaurant
+    "socialize" -> Icons.Filled.Groups
+    "call_family" -> Icons.Filled.Call
+    else -> when (action.category) {
+        ActionCategory.WORK -> Icons.Filled.Work
+        ActionCategory.GROWTH -> Icons.Filled.School
+        ActionCategory.WELLBEING -> Icons.Filled.Favorite
+        ActionCategory.SOCIAL -> Icons.Filled.Groups
+        ActionCategory.MONEY -> Icons.Filled.AttachMoney
+        ActionCategory.BUSINESS -> Icons.Filled.BusinessCenter
+    }
+}
+
+private fun metricIcon(label: String): ImageVector = when {
+    label.contains("cash", ignoreCase = true) -> Icons.Filled.AttachMoney
+    label.contains("debt", ignoreCase = true) -> Icons.Filled.MoneyOff
+    label.contains("credit", ignoreCase = true) -> Icons.Filled.CreditCard
+    label.contains("offer", ignoreCase = true) -> Icons.AutoMirrored.Filled.Assignment
+    label.contains("promotion", ignoreCase = true) -> Icons.AutoMirrored.Filled.TrendingUp
+    label.contains("pipeline", ignoreCase = true) -> Icons.Filled.BusinessCenter
+    label.contains("trust", ignoreCase = true) -> Icons.Filled.Groups
+    label.contains("health", ignoreCase = true) -> Icons.Filled.Favorite
+    label.contains("mood", ignoreCase = true) -> Icons.Filled.Favorite
+    label.contains("energy", ignoreCase = true) -> Icons.Filled.AccessTime
+    label.contains("stress", ignoreCase = true) -> Icons.Filled.Warning
+    label.contains("social", ignoreCase = true) -> Icons.Filled.Groups
+    label.contains("family", ignoreCase = true) -> Icons.Filled.Call
+    label.contains("friends", ignoreCase = true) -> Icons.Filled.Groups
+    label.contains("network", ignoreCase = true) -> Icons.Filled.Work
+    label.contains("knowledge", ignoreCase = true) -> Icons.Filled.School
+    label.contains("fitness", ignoreCase = true) -> Icons.Filled.FitnessCenter
+    label.contains("communication", ignoreCase = true) -> Icons.Filled.Call
+    label.contains("creativity", ignoreCase = true) -> Icons.Filled.BusinessCenter
+    else -> Icons.AutoMirrored.Filled.TrendingUp
+}
+
+private fun opportunityIcon(id: String): ImageVector = when (id) {
+    "bill_buffer" -> Icons.Filled.CreditCard
+    "recovery_window" -> Icons.Filled.Favorite
+    "promotion_push" -> Icons.AutoMirrored.Filled.TrendingUp
+    "reconnect" -> Icons.Filled.Groups
+    "debt_brake" -> Icons.Filled.MoneyOff
+    else -> Icons.Filled.Event
+}
+
+private fun recommendationIcon(availability: ActionAvailability): ImageVector = when {
+    availability.recommendationReason?.contains("opportunity", ignoreCase = true) == true -> Icons.Filled.Event
+    availability.focusMatch -> Icons.AutoMirrored.Filled.TrendingUp
+    availability.recommendationReason != null -> Icons.Filled.Warning
+    else -> actionIcon(availability.action)
+}
+
+private fun actionSectionSpecs(): List<ActionSectionSpec> = listOf(
+    ActionSectionSpec("money", "Make Money", Icons.Filled.AttachMoney),
+    ActionSectionSpec("career", "Get Hired / Career", Icons.Filled.Work),
+    ActionSectionSpec("business", "Build Business", Icons.Filled.BusinessCenter),
+    ActionSectionSpec("recover", "Recover", Icons.Filled.Favorite),
+    ActionSectionSpec("connect", "Connect", Icons.Filled.Groups),
+)
+
+private fun actionSectionKey(action: DailyActionDefinition): String = when {
+    action.id in setOf("temp_shift", "budget_review", "work_shift", "overtime", "client_project") -> "money"
+    action.category == ActionCategory.BUSINESS -> "business"
+    action.category == ActionCategory.WELLBEING -> "recover"
+    action.category == ActionCategory.SOCIAL -> "connect"
+    action.id in setOf("send_applications", "interview_prep", "attend_interview", "manager_check_in", "study_course", "networking") -> "career"
+    action.category == ActionCategory.MONEY || action.category == ActionCategory.WORK -> "money"
+    else -> "career"
+}
+
+private fun pressureMeterValue(state: GameState): Int =
+    maxOf(
+        state.stats.stress,
+        if (state.finances.cash < totalWeeklyCost(state)) 78 else 35,
+        if (!state.career.employed) 62 else 25,
+        (state.finances.debt / 10).coerceIn(0, 100),
+    ).coerceIn(0, 100)
+
+@Composable
+private fun meterColor(
+    value: Int,
+    reverseGood: Boolean = false,
+): Color {
+    val stressValue = if (reverseGood) value else 100 - value
+    return when {
+        stressValue >= 72 -> MaterialTheme.colorScheme.error
+        stressValue >= 45 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+}
+
+private data class ActionSectionSpec(
+    val key: String,
+    val label: String,
+    val icon: ImageVector,
+)
+
 private fun HistoryKind.label(): String = when (this) {
     HistoryKind.ACTION -> "Action"
     HistoryKind.CAREER -> "Career"
     HistoryKind.DAY -> "Day"
     HistoryKind.EVENT -> "Event"
     HistoryKind.FINANCE -> "Finance"
-    HistoryKind.GOAL -> "Goal"
+    HistoryKind.GOAL -> "Opportunity"
     HistoryKind.RELATIONSHIP -> "Social"
     HistoryKind.SYSTEM -> "System"
 }
@@ -1227,8 +1727,10 @@ private fun costText(action: DailyActionDefinition): String =
 
 private fun DailyActionDefinition.effectSummary(): List<String> = buildList {
     if (effect.cashDelta > 0) add("+cash")
-    if (id == "work_shift" || id == "freelance_gig") add("+income")
+    if (id in setOf("temp_shift", "work_shift", "overtime", "client_project")) add("+income")
     if (effect.debtDelta < 0) add("-debt")
+    if (effect.applicationsDelta > 0 || effect.offerProgressDelta > 0 || effect.interviewReadinessDelta > 0) add("+job")
+    if (effect.leadsDelta > 0 || effect.activeProjectsDelta > 0 || effect.completedProjectsDelta > 0) add("+business")
     if (effect.careerXpDelta > 0 || effect.promotionReadinessDelta > 0) add("+career")
     if (effect.healthDelta > 0 || effect.fitnessDelta > 0) add("+health")
     if (effect.moodDelta > 0) add("+mood")

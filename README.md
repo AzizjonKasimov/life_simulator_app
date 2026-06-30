@@ -4,12 +4,12 @@ A personal Android dashboard-style life simulator game. The first milestone is a
 
 ## Status
 
-V0.4 is a native Android command-center life simulator with a stronger daily loop. It has grouped adult-life actions, goals, finances, career progression, relationships, deterministic events, auto-suggested daily focus, timed pressure opportunities, action result chips, and a dashboard-first phone UI.
+V0.5 is a native Android command-center life simulator with one normal unemployed-person start and a deeper money loop. It has job search into steady work, career promotion, a client-service side business pipeline, finances, relationships, deterministic events, auto-suggested daily focus, timed pressure opportunities, action result chips, and a cleaner game-like HUD with icons and meters.
 
 ## Product Direction
 
 - Playable dashboard-first life simulation.
-- Phone-friendly surfaces for stats, progression, activities, events, history, and controls.
+- Phone-friendly surfaces for money status, career/business progression, wellbeing, relationships, activities, events, history, and controls.
 - Local-first gameplay with no backend, accounts, telemetry, or Play Store release plumbing until explicitly needed.
 
 ## Stack
@@ -36,9 +36,9 @@ Signed release builds copy the install APK into the repo root:
 .\gradlew.bat assembleRelease
 ```
 
-After a signed release build, use `LifeSimulator-latest.apk` from the root folder for phone installation. A versioned copy such as `LifeSimulator-0.2.0.apk` is kept there too.
+After a signed release build, use `LifeSimulator-latest.apk` from the root folder for phone installation. A versioned copy such as `LifeSimulator-0.5.0.apk` is kept there too.
 
-The V0.4 rebuild uses Room database version `3` and JSON schema version `3`. Updating from the earlier V0.2 save resets the old local save so daily focus and timed opportunity state can start cleanly. New saves are stored as `schemaVersion + stateJson` so future simulator systems can evolve without frequent table rewrites.
+The V0.5 rebuild uses Room database version `4` and JSON schema version `4`. Updating from V0.4 resets the old local save so the single-start job, career, and business state can start cleanly. New saves are stored as `schemaVersion + stateJson` so future simulator systems can evolve without frequent table rewrites.
 
 ## App Updates
 
@@ -57,23 +57,27 @@ Release signing uses local, gitignored files:
 - `release.keystore`
 - `keystore.properties`
 
-Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish a release with:
+Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish the V0.5 release with:
 
 ```powershell
-.\release.ps1 -VersionName 0.4.0 -VersionCode 4 -Notes "Daily focus, timed opportunities, and action feedback."
+.\release.ps1 -VersionName 0.5.0 -VersionCode 5 -Notes "Career, business, and money-making upgrade with a single normal start."
 ```
 
 The script builds a signed APK, publishes `LifeSimulator-<version>.apk` to `AzizjonKasimov/life-simulator-app-releases`, and updates `version.json` for the in-app updater.
 
 ## Game Loop
 
-Start a fictional young-adult life from one of three archetypes: Student, Junior Worker, or Freelancer. Each day starts with an auto-suggested focus: Money, Career, Recovery, Social, or Balanced. The player can override it before the first action, then the focus locks for the day.
+Start as Alex Rivers, a normal unemployed 22-year-old with $180 cash, $350 debt, bills coming due, modest skills, and one recoverable pressure curve. Each day starts with an auto-suggested focus: Money, Career, Recovery, Social, or Balanced. The player can override it before the first action, then the focus locks for the day.
 
-Each day gives limited time and energy for work, growth, wellbeing, social, and money actions. Matching the day's focus gives small bonuses, and completing the focus at day end gives a modest stability reward. Ignoring a non-balanced focus adds light stress and mood pressure.
+Each day gives limited time and energy for work, growth, business, wellbeing, social, and money actions. Matching the day's focus gives small bonuses, and completing the focus at day end gives a modest stability reward. Ignoring a non-balanced focus adds light stress and mood pressure.
 
-Timed opportunities add short pressure goals such as building a bill buffer, lowering stress, pushing promotion readiness, reconnecting socially, or reducing debt. Active opportunities appear on the dashboard and can complete or expire with small consequences.
+The money loop now has two connected tracks. Job search actions build applications, interview readiness, and offer progress until the first steady job unlocks. Employed actions pay salary, build reputation, and push promotion readiness; promotions increase title, level, and shift pay. Business actions build an offer, find leads, pitch clients, complete paid projects, improve the pipeline, and grow through business stages. Weekly business overhead starts only after the business reaches a reliable pipeline.
 
-Choices affect cash, debt, bills, credit, career XP, promotion readiness, health, mood, stress, relationships, goals, modifiers, action history, and events. V0.4 also adds archetype-specific actions: Exam Prep for Students, Manager Check-in for Junior Workers, and Pitch Client for Freelancers.
+Timed opportunities add short pressure events such as building a bill buffer, lowering stress, pushing promotion readiness, reconnecting socially, or reducing debt. Active opportunities appear on the dashboard and can complete or expire with small consequences.
+
+The dashboard now prioritizes the money loop first: identity/status, cash/runway/debt, job offer or salary progress, business pipeline, next bill pressure, daily focus, up to three priority actions, active opportunities, and the recent log. The Actions tab is grouped by Make Money, Get Hired / Career, Build Business, Recover, and Connect. The Progress tab shows status sections only: Career, Business, Finances, Wellbeing, Relationships, Skills, and App Updates.
+
+Choices affect cash, debt, bills, credit, job-search progress, business leads, active projects, client trust, pipeline value, career XP, promotion readiness, health, mood, stress, relationships, modifiers, action history, and events. Long-term goals/checklists were removed in V0.5; progression now lives directly in the career, business, money, wellbeing, relationship, daily focus, and timed opportunity systems.
 
 ## License
 

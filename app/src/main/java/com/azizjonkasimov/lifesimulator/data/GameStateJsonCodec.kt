@@ -8,11 +8,11 @@ import com.azizjonkasimov.lifesimulator.domain.model.DayPlanState
 import com.azizjonkasimov.lifesimulator.domain.model.FinanceState
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.ActionCategory
-import com.azizjonkasimov.lifesimulator.domain.model.GoalCategory
-import com.azizjonkasimov.lifesimulator.domain.model.GoalState
+import com.azizjonkasimov.lifesimulator.domain.model.BusinessStage
+import com.azizjonkasimov.lifesimulator.domain.model.BusinessState
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryEntry
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryKind
-import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
+import com.azizjonkasimov.lifesimulator.domain.model.JobSearchState
 import com.azizjonkasimov.lifesimulator.domain.model.LifeModifier
 import com.azizjonkasimov.lifesimulator.domain.model.LifeProfile
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
@@ -22,7 +22,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object GameStateJsonCodec {
-    const val SCHEMA_VERSION = 3
+    const val SCHEMA_VERSION = 4
 
     fun encode(state: GameState): String = JSONObject()
         .put("schemaVersion", SCHEMA_VERSION)
@@ -32,8 +32,9 @@ object GameStateJsonCodec {
         .put("skills", state.skills.toJson())
         .put("finances", state.finances.toJson())
         .put("career", state.career.toJson())
+        .put("jobSearch", state.jobSearch.toJson())
+        .put("business", state.business.toJson())
         .put("relationships", state.relationships.toJson())
-        .put("goals", state.goals.goalsToJsonArray())
         .put("modifiers", state.modifiers.modifiersToJsonArray())
         .put("dayPlan", state.dayPlan.toJson())
         .put("timedOpportunities", state.timedOpportunities.timedOpportunitiesToJsonArray())
@@ -51,8 +52,9 @@ object GameStateJsonCodec {
             skills = root.getJSONObject("skills").toSkills(),
             finances = root.getJSONObject("finances").toFinances(),
             career = root.getJSONObject("career").toCareer(),
+            jobSearch = root.getJSONObject("jobSearch").toJobSearch(),
+            business = root.getJSONObject("business").toBusiness(),
             relationships = root.getJSONObject("relationships").toRelationships(),
-            goals = root.getJSONArray("goals").toGoalList(),
             modifiers = root.getJSONArray("modifiers").toModifierList(),
             dayPlan = root.getJSONObject("dayPlan").toDayPlan(),
             timedOpportunities = root.getJSONArray("timedOpportunities").toTimedOpportunityList(),
@@ -66,12 +68,10 @@ object GameStateJsonCodec {
 private fun LifeProfile.toJson(): JSONObject = JSONObject()
     .put("name", name)
     .put("age", age)
-    .put("archetype", archetype.name)
 
 private fun JSONObject.toProfile(): LifeProfile = LifeProfile(
     name = getString("name"),
     age = getInt("age"),
-    archetype = LifeArchetype.valueOf(getString("archetype")),
 )
 
 private fun CalendarState.toJson(): JSONObject = JSONObject()
@@ -135,6 +135,7 @@ private fun CareerState.toJson(): JSONObject = JSONObject()
     .put("reputation", reputation)
     .put("promotionReadiness", promotionReadiness)
     .put("salaryPerShift", salaryPerShift)
+    .put("employed", employed)
 
 private fun JSONObject.toCareer(): CareerState = CareerState(
     title = getString("title"),
@@ -143,6 +144,37 @@ private fun JSONObject.toCareer(): CareerState = CareerState(
     reputation = getInt("reputation"),
     promotionReadiness = getInt("promotionReadiness"),
     salaryPerShift = getInt("salaryPerShift"),
+    employed = getBoolean("employed"),
+).normalized()
+
+private fun JobSearchState.toJson(): JSONObject = JSONObject()
+    .put("applicationsSent", applicationsSent)
+    .put("interviewReadiness", interviewReadiness)
+    .put("offerProgress", offerProgress)
+
+private fun JSONObject.toJobSearch(): JobSearchState = JobSearchState(
+    applicationsSent = getInt("applicationsSent"),
+    interviewReadiness = getInt("interviewReadiness"),
+    offerProgress = getInt("offerProgress"),
+).normalized()
+
+private fun BusinessState.toJson(): JSONObject = JSONObject()
+    .put("stage", stage.name)
+    .put("leads", leads)
+    .put("activeProjects", activeProjects)
+    .put("completedProjects", completedProjects)
+    .put("clientTrust", clientTrust)
+    .put("reputation", reputation)
+    .put("pipelineValue", pipelineValue)
+
+private fun JSONObject.toBusiness(): BusinessState = BusinessState(
+    stage = BusinessStage.valueOf(getString("stage")),
+    leads = getInt("leads"),
+    activeProjects = getInt("activeProjects"),
+    completedProjects = getInt("completedProjects"),
+    clientTrust = getInt("clientTrust"),
+    reputation = getInt("reputation"),
+    pipelineValue = getInt("pipelineValue"),
 ).normalized()
 
 private fun RelationshipState.toJson(): JSONObject = JSONObject()
@@ -155,25 +187,6 @@ private fun JSONObject.toRelationships(): RelationshipState = RelationshipState(
     friends = getInt("friends"),
     network = getInt("network"),
 ).clamped()
-
-private fun GoalState.toJson(): JSONObject = JSONObject()
-    .put("id", id)
-    .put("title", title)
-    .put("description", description)
-    .put("category", category.name)
-    .put("progress", progress)
-    .put("target", target)
-    .put("rewardText", rewardText)
-
-private fun JSONObject.toGoal(): GoalState = GoalState(
-    id = getString("id"),
-    title = getString("title"),
-    description = getString("description"),
-    category = GoalCategory.valueOf(getString("category")),
-    progress = getInt("progress"),
-    target = getInt("target"),
-    rewardText = getString("rewardText"),
-)
 
 private fun LifeModifier.toJson(): JSONObject = JSONObject()
     .put("id", id)
@@ -244,13 +257,6 @@ private fun JSONObject.toHistory(): HistoryEntry = HistoryEntry(
     detail = getString("detail"),
     kind = HistoryKind.valueOf(getString("kind")),
 )
-
-private fun List<GoalState>.goalsToJsonArray(): JSONArray = JSONArray().also { array ->
-    forEach { array.put(it.toJson()) }
-}
-
-private fun JSONArray.toGoalList(): List<GoalState> =
-    (0 until length()).map { getJSONObject(it).toGoal() }
 
 private fun List<LifeModifier>.modifiersToJsonArray(): JSONArray = JSONArray().also { array ->
     forEach { array.put(it.toJson()) }

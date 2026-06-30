@@ -10,7 +10,6 @@ data class DailyActionDefinition(
     val moneyCost: Int = 0,
     val effect: ActionEffect,
     val tags: List<String> = emptyList(),
-    val allowedArchetypes: Set<LifeArchetype> = emptySet(),
 )
 
 data class ActionAvailability(
@@ -28,6 +27,7 @@ enum class ActionCategory(val label: String) {
     WELLBEING("Wellbeing"),
     SOCIAL("Social"),
     MONEY("Money"),
+    BUSINESS("Business"),
 }
 
 data class ActionDelta(

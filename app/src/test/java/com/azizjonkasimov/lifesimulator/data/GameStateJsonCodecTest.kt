@@ -1,26 +1,27 @@
 package com.azizjonkasimov.lifesimulator.data
 
 import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
-import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class GameStateJsonCodecTest {
     @Test
     fun gameStateRoundTripsThroughJson() {
-        val state = LifeSimulationEngine().startNewLife(LifeArchetype.JUNIOR_WORKER)
+        val state = LifeSimulationEngine().startNewLife()
         val encoded = GameStateJsonCodec.encode(state)
         val decoded = GameStateJsonCodec.decode(encoded)
 
+        assertFalse(encoded.contains("\"goals\""))
         assertEquals(state, decoded)
     }
 
     @Test
-    fun entityUsesV3SchemaVersion() {
-        val state = LifeSimulationEngine().startNewLife(LifeArchetype.STUDENT)
+    fun entityUsesV4SchemaVersion() {
+        val state = LifeSimulationEngine().startNewLife()
         val entity = state.toEntity()
 
-        assertEquals(3, entity.schemaVersion)
+        assertEquals(4, entity.schemaVersion)
         assertEquals(state, entity.toDomain())
     }
 }

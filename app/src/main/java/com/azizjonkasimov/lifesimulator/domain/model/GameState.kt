@@ -7,8 +7,9 @@ data class GameState(
     val skills: SkillSet,
     val finances: FinanceState,
     val career: CareerState,
+    val jobSearch: JobSearchState,
+    val business: BusinessState,
     val relationships: RelationshipState,
-    val goals: List<GoalState>,
     val modifiers: List<LifeModifier>,
     val dayPlan: DayPlanState,
     val timedOpportunities: List<TimedOpportunityState>,
@@ -25,14 +26,11 @@ data class GameState(
     val timeRemaining: Int
         get() = calendar.timeRemaining
 
-    val archetype: LifeArchetype
-        get() = profile.archetype
 }
 
 data class LifeProfile(
     val name: String,
     val age: Int,
-    val archetype: LifeArchetype,
 )
 
 data class CalendarState(
@@ -69,13 +67,52 @@ data class CareerState(
     val reputation: Int,
     val promotionReadiness: Int,
     val salaryPerShift: Int,
+    val employed: Boolean,
 ) {
     fun normalized(): CareerState = copy(
-        level = level.coerceAtLeast(1),
+        level = level.coerceAtLeast(if (employed) 1 else 0),
         xp = xp.coerceAtLeast(0),
         reputation = reputation.coerceIn(0, 100),
         promotionReadiness = promotionReadiness.coerceIn(0, 100),
         salaryPerShift = salaryPerShift.coerceAtLeast(0),
+    )
+}
+
+data class JobSearchState(
+    val applicationsSent: Int,
+    val interviewReadiness: Int,
+    val offerProgress: Int,
+) {
+    fun normalized(): JobSearchState = copy(
+        applicationsSent = applicationsSent.coerceAtLeast(0),
+        interviewReadiness = interviewReadiness.coerceIn(0, 100),
+        offerProgress = offerProgress.coerceIn(0, 100),
+    )
+}
+
+enum class BusinessStage(val label: String) {
+    IDEA("Idea"),
+    SIDE_HUSTLE("Side Hustle"),
+    RELIABLE_PIPELINE("Reliable Pipeline"),
+    SMALL_BUSINESS("Small Business"),
+}
+
+data class BusinessState(
+    val stage: BusinessStage,
+    val leads: Int,
+    val activeProjects: Int,
+    val completedProjects: Int,
+    val clientTrust: Int,
+    val reputation: Int,
+    val pipelineValue: Int,
+) {
+    fun normalized(): BusinessState = copy(
+        leads = leads.coerceAtLeast(0),
+        activeProjects = activeProjects.coerceAtLeast(0),
+        completedProjects = completedProjects.coerceAtLeast(0),
+        clientTrust = clientTrust.coerceIn(0, 100),
+        reputation = reputation.coerceIn(0, 100),
+        pipelineValue = pipelineValue.coerceIn(0, 250),
     )
 }
 
@@ -92,32 +129,6 @@ data class RelationshipState(
         friends = friends.coerceIn(0, 100),
         network = network.coerceIn(0, 100),
     )
-}
-
-data class GoalState(
-    val id: String,
-    val title: String,
-    val description: String,
-    val category: GoalCategory,
-    val progress: Int,
-    val target: Int,
-    val rewardText: String,
-) {
-    val isComplete: Boolean
-        get() = progress >= target
-
-    val percent: Int
-        get() = if (target <= 0) 100 else ((progress * 100) / target).coerceIn(0, 100)
-
-    fun advanced(amount: Int): GoalState =
-        copy(progress = (progress + amount).coerceIn(0, target))
-}
-
-enum class GoalCategory(val label: String) {
-    CAREER("Career"),
-    FINANCE("Finance"),
-    WELLBEING("Wellbeing"),
-    SOCIAL("Social"),
 }
 
 data class LifeModifier(
@@ -168,5 +179,4 @@ data class DashboardSnapshot(
     val quickActionIds: List<String>,
     val nextBillLabel: String,
     val netWorth: Int,
-    val focusGoal: GoalState?,
 )

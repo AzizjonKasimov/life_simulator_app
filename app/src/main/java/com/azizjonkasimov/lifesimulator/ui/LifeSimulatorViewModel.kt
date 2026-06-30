@@ -11,7 +11,6 @@ import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
 import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
 import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
-import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 import kotlinx.coroutines.launch
 
 class LifeSimulatorViewModel(
@@ -34,10 +33,10 @@ class LifeSimulatorViewModel(
         }
     }
 
-    fun startNewLife(archetype: LifeArchetype) {
+    fun startNewLife() {
         viewModelScope.launch {
-            val gameState = engine.startNewLife(archetype)
-            messages = listOf("Started a new ${archetype.displayName} life.")
+            val gameState = engine.startNewLife()
+            messages = listOf("Started a new life.")
             lastActionDeltas = emptyList()
             repository.saveGameState(gameState)
         }
