@@ -62,6 +62,8 @@ class LifeSimulatorViewModel(
     fun sellInvestment(type: InvestmentType) = dispatch { engine.sellInvestment(it, type) }
     fun buyAsset(assetId: String) = dispatch { engine.buyAsset(it, assetId) }
     fun sellAsset(assetId: String) = dispatch { engine.sellAsset(it, assetId) }
+    fun setAutoSave(percent: Int) = dispatch { engine.setAutoSave(it, percent) }
+    fun setAutoInvest(percent: Int, type: InvestmentType) = dispatch { engine.setAutoInvest(it, percent, type) }
 
     fun resetSave() {
         viewModelScope.launch {

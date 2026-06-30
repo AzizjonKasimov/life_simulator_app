@@ -170,6 +170,8 @@ private fun ActiveGameScreen(
                     onSellInvestment = viewModel::sellInvestment,
                     onBuyAsset = viewModel::buyAsset,
                     onSellAsset = viewModel::sellAsset,
+                    onSetAutoSave = viewModel::setAutoSave,
+                    onSetAutoInvest = viewModel::setAutoInvest,
                 )
                 GameTab.PROGRESS -> ProgressScreen(
                     state = state,

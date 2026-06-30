@@ -297,6 +297,22 @@ class LifeSimulationEngine(
         return SimulationResult(updated, true, listOf("Sold ${def.name} for ${money(resale)}."))
     }
 
+    /** Set the share of post-bill cash that auto-moves to savings each payday. Capped so save + invest ≤ 100%. */
+    fun setAutoSave(state: GameState, percent: Int): SimulationResult {
+        val capped = percent.coerceIn(0, 100 - state.economy.autoInvestPercent)
+        val updated = state.copy(economy = state.economy.copy(autoSavePercent = capped).normalized())
+        val message = if (capped > 0) "Auto-save set to $capped% of spare cash each payday." else "Auto-save turned off."
+        return SimulationResult(updated, true, listOf(message))
+    }
+
+    /** Set the share of post-bill cash that auto-invests each payday, and which holding it buys. */
+    fun setAutoInvest(state: GameState, percent: Int, type: InvestmentType): SimulationResult {
+        val capped = percent.coerceIn(0, 100 - state.economy.autoSavePercent)
+        val updated = state.copy(economy = state.economy.copy(autoInvestPercent = capped, autoInvestType = type).normalized())
+        val message = if (capped > 0) "Auto-invest set to $capped% into ${type.label} each payday." else "Auto-invest off (${type.label} selected)."
+        return SimulationResult(updated, true, listOf(message))
+    }
+
     // -----------------------------------------------------------------------
     // Decisions
     // -----------------------------------------------------------------------
@@ -412,11 +428,12 @@ class LifeSimulationEngine(
             entries += HistoryEntry(working.day, "Business week", detail, HistoryKind.FINANCE)
         }
 
-        // Savings interest.
+        // Savings interest (tracked as a running lifetime total so the player can see what they've made).
         if (working.economy.savings > 0) {
             val interest = (working.economy.savings * SAVINGS_WEEKLY_INTEREST_PERCENT / 100).coerceAtLeast(1)
-            working = working.copy(economy = working.economy.copy(savings = working.economy.savings + interest))
-            if (interest > 0) entries += HistoryEntry(working.day, "Savings interest", "Your savings earned ${money(interest)}.", HistoryKind.FINANCE)
+            val lifetime = working.economy.lifetimeInterest + interest
+            working = working.copy(economy = working.economy.copy(savings = working.economy.savings + interest, lifetimeInterest = lifetime))
+            entries += HistoryEntry(working.day, "Savings interest", "Your savings earned ${money(interest)} (${money(lifetime)} all-time).", HistoryKind.FINANCE)
         }
 
         // Investment swings (seeded).
@@ -453,6 +470,39 @@ class LifeSimulationEngine(
                 .also { entries += HistoryEntry(working.day, "Bill went unpaid", "Short ${money(shortfall)} — added to debt.", HistoryKind.FINANCE) }
         }
         messages.add(0, "Weekly bill: ${money(bill)}.")
+
+        // Auto-allocation: sweep a chosen share of the cash left after the bill into savings/investments,
+        // so the player never has to deposit by hand. Both shares draw from the same post-bill base.
+        val eco = working.economy
+        val sweepBase = working.finances.cash
+        if (sweepBase > 0 && eco.autoAllocationPercent > 0) {
+            val toSave = sweepBase * eco.autoSavePercent / 100
+            val toInvest = sweepBase * eco.autoInvestPercent / 100
+            if (toSave > 0) {
+                working = working.copy(
+                    finances = working.finances.copy(cash = working.finances.cash - toSave).normalized(),
+                    economy = working.economy.copy(savings = working.economy.savings + toSave).normalized(),
+                )
+                entries += HistoryEntry(working.day, "Auto-saved", "Moved ${money(toSave)} to savings automatically.", HistoryKind.FINANCE)
+            }
+            if (toInvest > 0) {
+                val type = eco.autoInvestType
+                val existing = working.economy.investments.firstOrNull { it.type == type }
+                val merged = existing?.copy(principal = existing.principal + toInvest, currentValue = existing.currentValue + toInvest)
+                    ?: Investment(type = type, principal = toInvest, currentValue = toInvest)
+                val investments = working.economy.investments.filterNot { it.type == type } + merged
+                working = working.copy(
+                    finances = working.finances.copy(cash = working.finances.cash - toInvest).normalized(),
+                    economy = working.economy.copy(investments = investments).normalized(),
+                )
+                entries += HistoryEntry(working.day, "Auto-invested", "Put ${money(toInvest)} into ${type.label} automatically.", HistoryKind.FINANCE)
+            }
+            val moved = listOfNotNull(
+                if (toSave > 0) "${money(toSave)} to savings" else null,
+                if (toInvest > 0) "${money(toInvest)} to ${eco.autoInvestType.label}" else null,
+            )
+            if (moved.isNotEmpty()) messages += "Auto-moved ${moved.joinToString(" and ")}."
+        }
 
         return SettlementResult(working, messages, entries)
     }

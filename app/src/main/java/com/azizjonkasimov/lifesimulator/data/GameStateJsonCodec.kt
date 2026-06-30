@@ -127,11 +127,20 @@ private fun EconomyState.toJson(): JSONObject = JSONObject()
     .put("savings", savings)
     .put("investments", JSONArray().also { array -> investments.forEach { array.put(it.toJson()) } })
     .put("ownedAssets", JSONArray().also { array -> ownedAssets.forEach { array.put(it) } })
+    .put("autoSavePercent", autoSavePercent)
+    .put("autoInvestPercent", autoInvestPercent)
+    .put("autoInvestType", autoInvestType.name)
+    .put("lifetimeInterest", lifetimeInterest)
 
+// New economy fields are read with defaults so saves written before v0.8.0 still load (no wipe).
 private fun JSONObject.toEconomy(): EconomyState = EconomyState(
     savings = getInt("savings"),
     investments = getJSONArray("investments").let { array -> (0 until array.length()).map { array.getJSONObject(it).toInvestment() } },
     ownedAssets = getJSONArray("ownedAssets").let { array -> (0 until array.length()).map { array.getString(it) } },
+    autoSavePercent = optInt("autoSavePercent", 0),
+    autoInvestPercent = optInt("autoInvestPercent", 0),
+    autoInvestType = runCatching { InvestmentType.valueOf(optString("autoInvestType", InvestmentType.INDEX.name)) }.getOrDefault(InvestmentType.INDEX),
+    lifetimeInterest = optInt("lifetimeInterest", 0),
 ).normalized()
 
 private fun Investment.toJson(): JSONObject = JSONObject()

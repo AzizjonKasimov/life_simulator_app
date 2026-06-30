@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Savings
@@ -432,6 +433,11 @@ internal fun costText(action: DailyActionDefinition): String =
     "${action.timeCost}h · ${action.energyCost} energy" +
         if (action.moneyCost > 0) " · ${money(action.moneyCost)}" else ""
 
+/** Tighter cost string for dense rows on narrow screens: "5h · 28e · $30". */
+internal fun compactCostText(action: DailyActionDefinition): String =
+    "${action.timeCost}h · ${action.energyCost}e" +
+        if (action.moneyCost > 0) " · ${money(action.moneyCost)}" else ""
+
 internal fun runwayDays(state: GameState, weeklyCost: Int): Int =
     if (weeklyCost <= 0) 0 else (state.finances.cash * 7 / weeklyCost).coerceAtLeast(0)
 
@@ -524,6 +530,7 @@ internal object UiIcons {
     val money = Icons.Filled.AttachMoney
     val netWorth = Icons.Filled.AccountBalanceWallet
     val savings = Icons.Filled.Savings
+    val autoSave = Icons.Filled.Autorenew
     val invest = Icons.AutoMirrored.Filled.ShowChart
     val shop = Icons.Filled.ShoppingCart
     val decision = Icons.Filled.Casino

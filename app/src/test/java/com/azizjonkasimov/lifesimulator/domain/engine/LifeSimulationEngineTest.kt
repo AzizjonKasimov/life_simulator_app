@@ -186,4 +186,55 @@ class LifeSimulationEngineTest {
         assertEquals(first.state, second.state)
         assertEquals(first.messages, second.messages)
     }
+
+    @Test
+    fun savingsInterestTracksLifetimeTotal() {
+        val billDay = engine.startNewLife().copy(
+            calendar = CalendarState(day = 7, timeRemaining = 0, actionsToday = 0),
+            finances = FinanceState(cash = 1000, debt = 0, weeklyLivingCost = 190, nextBillDueDay = 7, creditScore = 700),
+            economy = EconomyState(savings = 1000, investments = emptyList(), ownedAssets = emptyList()),
+        )
+
+        val result = engine.advanceDay(billDay)
+
+        assertEquals(1010, result.state.economy.savings)
+        assertEquals(10, result.state.economy.lifetimeInterest)
+    }
+
+    @Test
+    fun autoAllocationSweepsLeftoverCashOnPayday() {
+        val billDay = engine.startNewLife().copy(
+            calendar = CalendarState(day = 7, timeRemaining = 0, actionsToday = 0),
+            finances = FinanceState(cash = 1000, debt = 0, weeklyLivingCost = 190, nextBillDueDay = 7, creditScore = 700),
+            economy = EconomyState(
+                savings = 0,
+                investments = emptyList(),
+                ownedAssets = emptyList(),
+                autoSavePercent = 20,
+                autoInvestPercent = 10,
+                autoInvestType = InvestmentType.INDEX,
+            ),
+        )
+
+        val result = engine.advanceDay(billDay)
+
+        // Post-bill cash = 1000 - 190 = 810. Sweep 20% to savings, 10% into Index.
+        assertEquals(162, result.state.economy.savings)
+        assertEquals(81, result.state.economy.investments.first { it.type == InvestmentType.INDEX }.currentValue)
+        assertEquals(810 - 162 - 81, result.state.finances.cash)
+    }
+
+    @Test
+    fun setAutoSaveAndInvestRespectCombinedCap() {
+        val initial = engine.startNewLife()
+
+        val saved = engine.setAutoSave(initial, 60)
+        assertEquals(60, saved.state.economy.autoSavePercent)
+
+        // 70% would push the combined sweep past 100%, so it is capped to the remaining 40%.
+        val invested = engine.setAutoInvest(saved.state, 70, InvestmentType.STOCKS)
+        assertEquals(60, invested.state.economy.autoSavePercent)
+        assertEquals(40, invested.state.economy.autoInvestPercent)
+        assertEquals(InvestmentType.STOCKS, invested.state.economy.autoInvestType)
+    }
 }

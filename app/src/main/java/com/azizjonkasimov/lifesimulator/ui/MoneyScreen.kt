@@ -9,12 +9,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.azizjonkasimov.lifesimulator.domain.engine.AssetCatalog
 import com.azizjonkasimov.lifesimulator.domain.model.AssetDefinition
@@ -32,6 +35,8 @@ internal fun MoneyScreen(
     onSellInvestment: (InvestmentType) -> Unit,
     onBuyAsset: (String) -> Unit,
     onSellAsset: (String) -> Unit,
+    onSetAutoSave: (Int) -> Unit,
+    onSetAutoInvest: (Int, InvestmentType) -> Unit,
 ) {
     val cash = state.finances.cash
     LazyColumn(
@@ -41,6 +46,7 @@ internal fun MoneyScreen(
     ) {
         item { NetWorthCard(state = state, netWorth = netWorth) }
         item { SavingsCard(state = state, onDeposit = onDeposit, onWithdraw = onWithdraw) }
+        item { AutoAllocationCard(state = state, cash = cash, onSetAutoSave = onSetAutoSave, onSetAutoInvest = onSetAutoInvest) }
         if (state.finances.debt > 0) {
             item { DebtCard(state = state, onPayDebt = onPayDebt) }
         }
@@ -92,10 +98,23 @@ private fun SavingsCard(
         },
     ) {
         Text(
-            text = "A safe place to park cash. Earns a little interest every week.",
+            text = "A safe place to park cash. Earns 1% interest every payday.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        val nextInterest = if (savings > 0) (savings / 100).coerceAtLeast(1) else 0
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MiniStat(
+                label = "Interest earned",
+                value = "+${money(state.economy.lifetimeInterest)}",
+                modifier = Modifier.weight(1f),
+            )
+            MiniStat(
+                label = "Next payday",
+                value = "+${money(nextInterest)}",
+                modifier = Modifier.weight(1f),
+            )
+        }
         ChipFlowRow {
             MoneyButton(text = "Deposit \$100", enabled = cash >= 100, primary = true) { onDeposit(100) }
             MoneyButton(text = "Deposit all", enabled = cash > 0, primary = true) { onDeposit(cash) }
@@ -257,6 +276,79 @@ private fun AssetRow(
                     primary = true,
                 ) { onBuyAsset(asset.id) }
             }
+        }
+    }
+}
+
+@Composable
+private fun AutoAllocationCard(
+    state: GameState,
+    cash: Int,
+    onSetAutoSave: (Int) -> Unit,
+    onSetAutoInvest: (Int, InvestmentType) -> Unit,
+) {
+    val eco = state.economy
+    SectionCard(title = "Auto-Save & Invest", icon = UiIcons.autoSave) {
+        Text(
+            text = "Every payday, automatically move a share of your spare cash — no manual deposits.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        PercentStepperRow(
+            label = "To Savings",
+            percent = eco.autoSavePercent,
+            onChange = onSetAutoSave,
+        )
+        PercentStepperRow(
+            label = "To Investing",
+            percent = eco.autoInvestPercent,
+            onChange = { onSetAutoInvest(it, eco.autoInvestType) },
+        )
+        ChipFlowRow {
+            InvestmentType.entries.forEach { type ->
+                FilterChip(
+                    selected = eco.autoInvestType == type,
+                    onClick = { onSetAutoInvest(eco.autoInvestPercent, type) },
+                    label = { Text(text = type.label) },
+                )
+            }
+        }
+        val previewSave = cash * eco.autoSavePercent / 100
+        val previewInvest = cash * eco.autoInvestPercent / 100
+        Text(
+            text = if (eco.autoAllocationPercent > 0) {
+                "≈ ${money(previewSave)} to savings + ${money(previewInvest)} to ${eco.autoInvestType.label} from your current cash."
+            } else {
+                "Off — set a percentage above to start automating."
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PercentStepperRow(
+    label: String,
+    percent: Int,
+    onChange: (Int) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MoneyButton(text = "-5%", enabled = percent > 0) { onChange((percent - 5).coerceAtLeast(0)) }
+            Text(
+                text = "$percent%",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
+            MoneyButton(text = "+5%", enabled = percent < 100) { onChange(percent + 5) }
         }
     }
 }

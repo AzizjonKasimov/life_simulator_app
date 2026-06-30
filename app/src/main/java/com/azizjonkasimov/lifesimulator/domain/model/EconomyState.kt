@@ -10,15 +10,30 @@ data class EconomyState(
     val savings: Int,
     val investments: List<Investment>,
     val ownedAssets: List<String>,
+    /** Share of leftover cash automatically moved to savings each payday (0–100). */
+    val autoSavePercent: Int = 0,
+    /** Share of leftover cash automatically invested each payday (0–100). */
+    val autoInvestPercent: Int = 0,
+    /** Which holding auto-invested cash buys into. */
+    val autoInvestType: InvestmentType = InvestmentType.INDEX,
+    /** Running total of interest savings have ever earned — answers "how much did I make?". */
+    val lifetimeInterest: Int = 0,
 ) {
     val investedValue: Int
         get() = investments.sumOf { it.currentValue }
+
+    /** Total share of spare cash swept away automatically each payday. */
+    val autoAllocationPercent: Int
+        get() = autoSavePercent + autoInvestPercent
 
     fun normalized(): EconomyState = copy(
         savings = savings.coerceAtLeast(0),
         investments = investments
             .map { it.normalized() }
             .filter { it.currentValue > 0 || it.principal > 0 },
+        autoSavePercent = autoSavePercent.coerceIn(0, 100),
+        autoInvestPercent = autoInvestPercent.coerceIn(0, 100),
+        lifetimeInterest = lifetimeInterest.coerceAtLeast(0),
     )
 
     companion object {
