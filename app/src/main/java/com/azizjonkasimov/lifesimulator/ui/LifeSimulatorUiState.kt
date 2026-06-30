@@ -1,6 +1,7 @@
 package com.azizjonkasimov.lifesimulator.ui
 
 import com.azizjonkasimov.lifesimulator.domain.model.ActionAvailability
+import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
 import com.azizjonkasimov.lifesimulator.domain.model.DashboardSnapshot
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 
@@ -11,6 +12,7 @@ data class LifeSimulatorUiState(
     val dashboard: DashboardSnapshot? = null,
     val selectedTab: GameTab = GameTab.DASHBOARD,
     val messages: List<String> = emptyList(),
+    val lastActionDeltas: List<ActionDelta> = emptyList(),
 )
 
 enum class GameTab(

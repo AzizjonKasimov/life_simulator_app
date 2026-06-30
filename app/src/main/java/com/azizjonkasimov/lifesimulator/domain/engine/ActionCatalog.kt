@@ -3,6 +3,7 @@ package com.azizjonkasimov.lifesimulator.domain.engine
 import com.azizjonkasimov.lifesimulator.domain.model.ActionEffect
 import com.azizjonkasimov.lifesimulator.domain.model.ActionCategory
 import com.azizjonkasimov.lifesimulator.domain.model.DailyActionDefinition
+import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 
 object ActionCatalog {
     val actions: List<DailyActionDefinition> = listOf(
@@ -80,6 +81,24 @@ object ActionCatalog {
             tags = listOf("career", "opportunity"),
         ),
         DailyActionDefinition(
+            id = "exam_prep",
+            title = "Exam Prep",
+            description = "Turn student pressure into concrete academic momentum.",
+            category = ActionCategory.GROWTH,
+            timeCost = 3,
+            energyCost = 22,
+            effect = ActionEffect(
+                moodDelta = -2,
+                stressDelta = 5,
+                knowledgeDelta = 22,
+                careerXpDelta = 6,
+                promotionReadinessDelta = 6,
+                goalProgress = mapOf("first_promotion" to 6),
+            ),
+            tags = listOf("student", "skill"),
+            allowedArchetypes = setOf(LifeArchetype.STUDENT),
+        ),
+        DailyActionDefinition(
             id = "freelance_gig",
             title = "Freelance Gig",
             description = "Take a flexible contract for cash, reputation, and practice.",
@@ -96,6 +115,45 @@ object ActionCatalog {
                 reputationDelta = 5,
             ),
             tags = listOf("income", "portfolio"),
+        ),
+        DailyActionDefinition(
+            id = "manager_check_in",
+            title = "Manager Check-in",
+            description = "Clarify expectations and convert steady work into visible progress.",
+            category = ActionCategory.WORK,
+            timeCost = 2,
+            energyCost = 14,
+            effect = ActionEffect(
+                moodDelta = 1,
+                stressDelta = 4,
+                careerXpDelta = 7,
+                communicationDelta = 5,
+                reputationDelta = 9,
+                promotionReadinessDelta = 12,
+                goalProgress = mapOf("first_promotion" to 10),
+            ),
+            tags = listOf("career", "visibility"),
+            allowedArchetypes = setOf(LifeArchetype.JUNIOR_WORKER),
+        ),
+        DailyActionDefinition(
+            id = "pitch_client",
+            title = "Pitch Client",
+            description = "Send a targeted pitch that could turn reputation into paid work.",
+            category = ActionCategory.WORK,
+            timeCost = 3,
+            energyCost = 20,
+            effect = ActionEffect(
+                cashDelta = 65,
+                moodDelta = -1,
+                stressDelta = 8,
+                careerXpDelta = 7,
+                communicationDelta = 5,
+                creativityDelta = 5,
+                reputationDelta = 6,
+                promotionReadinessDelta = 6,
+            ),
+            tags = listOf("freelance", "income"),
+            allowedArchetypes = setOf(LifeArchetype.FREELANCER),
         ),
         DailyActionDefinition(
             id = "budget_review",

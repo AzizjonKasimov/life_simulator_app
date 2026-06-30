@@ -10,6 +10,9 @@ data class GameState(
     val relationships: RelationshipState,
     val goals: List<GoalState>,
     val modifiers: List<LifeModifier>,
+    val dayPlan: DayPlanState,
+    val timedOpportunities: List<TimedOpportunityState>,
+    val opportunityCooldowns: Map<String, Int>,
     val rngSeed: Long,
     val history: List<HistoryEntry>,
 ) {
@@ -130,10 +133,38 @@ data class LifeModifier(
     fun tick(): LifeModifier = copy(daysRemaining = daysRemaining - 1)
 }
 
+enum class DailyFocus(val label: String) {
+    MONEY("Money"),
+    CAREER("Career"),
+    RECOVERY("Recovery"),
+    SOCIAL("Social"),
+    BALANCED("Balanced"),
+}
+
+data class DayPlanState(
+    val day: Int,
+    val recommendedFocus: DailyFocus,
+    val activeFocus: DailyFocus,
+    val reason: String,
+    val locked: Boolean,
+    val actionsTaken: Int,
+    val focusActionsCompleted: Int,
+    val categoriesCompleted: Set<ActionCategory>,
+)
+
+data class TimedOpportunityState(
+    val id: String,
+    val progress: Int,
+    val target: Int,
+    val baseline: Int,
+    val expiresOnDay: Int,
+)
+
 data class DashboardSnapshot(
     val headline: String,
     val status: String,
     val alerts: List<String>,
+    val pressureSummary: String,
     val quickActionIds: List<String>,
     val nextBillLabel: String,
     val netWorth: Int,

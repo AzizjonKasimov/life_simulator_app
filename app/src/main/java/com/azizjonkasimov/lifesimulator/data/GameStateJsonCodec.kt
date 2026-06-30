@@ -3,8 +3,11 @@ package com.azizjonkasimov.lifesimulator.data
 import com.azizjonkasimov.lifesimulator.domain.model.CalendarState
 import com.azizjonkasimov.lifesimulator.domain.model.CareerState
 import com.azizjonkasimov.lifesimulator.domain.model.CoreStats
+import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
+import com.azizjonkasimov.lifesimulator.domain.model.DayPlanState
 import com.azizjonkasimov.lifesimulator.domain.model.FinanceState
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
+import com.azizjonkasimov.lifesimulator.domain.model.ActionCategory
 import com.azizjonkasimov.lifesimulator.domain.model.GoalCategory
 import com.azizjonkasimov.lifesimulator.domain.model.GoalState
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryEntry
@@ -14,11 +17,12 @@ import com.azizjonkasimov.lifesimulator.domain.model.LifeModifier
 import com.azizjonkasimov.lifesimulator.domain.model.LifeProfile
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
+import com.azizjonkasimov.lifesimulator.domain.model.TimedOpportunityState
 import org.json.JSONArray
 import org.json.JSONObject
 
 object GameStateJsonCodec {
-    const val SCHEMA_VERSION = 2
+    const val SCHEMA_VERSION = 3
 
     fun encode(state: GameState): String = JSONObject()
         .put("schemaVersion", SCHEMA_VERSION)
@@ -31,6 +35,9 @@ object GameStateJsonCodec {
         .put("relationships", state.relationships.toJson())
         .put("goals", state.goals.goalsToJsonArray())
         .put("modifiers", state.modifiers.modifiersToJsonArray())
+        .put("dayPlan", state.dayPlan.toJson())
+        .put("timedOpportunities", state.timedOpportunities.timedOpportunitiesToJsonArray())
+        .put("opportunityCooldowns", state.opportunityCooldowns.toJsonObject())
         .put("rngSeed", state.rngSeed)
         .put("history", state.history.historyToJsonArray())
         .toString()
@@ -47,6 +54,9 @@ object GameStateJsonCodec {
             relationships = root.getJSONObject("relationships").toRelationships(),
             goals = root.getJSONArray("goals").toGoalList(),
             modifiers = root.getJSONArray("modifiers").toModifierList(),
+            dayPlan = root.getJSONObject("dayPlan").toDayPlan(),
+            timedOpportunities = root.getJSONArray("timedOpportunities").toTimedOpportunityList(),
+            opportunityCooldowns = root.getJSONObject("opportunityCooldowns").toStringIntMap(),
             rngSeed = root.getLong("rngSeed"),
             history = root.getJSONArray("history").toHistoryList(),
         )
@@ -186,6 +196,42 @@ private fun JSONObject.toModifier(): LifeModifier = LifeModifier(
     stressDelta = getInt("stressDelta"),
 )
 
+private fun DayPlanState.toJson(): JSONObject = JSONObject()
+    .put("day", day)
+    .put("recommendedFocus", recommendedFocus.name)
+    .put("activeFocus", activeFocus.name)
+    .put("reason", reason)
+    .put("locked", locked)
+    .put("actionsTaken", actionsTaken)
+    .put("focusActionsCompleted", focusActionsCompleted)
+    .put("categoriesCompleted", categoriesCompleted.toJsonArray())
+
+private fun JSONObject.toDayPlan(): DayPlanState = DayPlanState(
+    day = getInt("day"),
+    recommendedFocus = DailyFocus.valueOf(getString("recommendedFocus")),
+    activeFocus = DailyFocus.valueOf(getString("activeFocus")),
+    reason = getString("reason"),
+    locked = getBoolean("locked"),
+    actionsTaken = getInt("actionsTaken"),
+    focusActionsCompleted = getInt("focusActionsCompleted"),
+    categoriesCompleted = getJSONArray("categoriesCompleted").toActionCategorySet(),
+)
+
+private fun TimedOpportunityState.toJson(): JSONObject = JSONObject()
+    .put("id", id)
+    .put("progress", progress)
+    .put("target", target)
+    .put("baseline", baseline)
+    .put("expiresOnDay", expiresOnDay)
+
+private fun JSONObject.toTimedOpportunity(): TimedOpportunityState = TimedOpportunityState(
+    id = getString("id"),
+    progress = getInt("progress"),
+    target = getInt("target"),
+    baseline = getInt("baseline"),
+    expiresOnDay = getInt("expiresOnDay"),
+)
+
 private fun HistoryEntry.toJson(): JSONObject = JSONObject()
     .put("day", day)
     .put("title", title)
@@ -212,6 +258,27 @@ private fun List<LifeModifier>.modifiersToJsonArray(): JSONArray = JSONArray().a
 
 private fun JSONArray.toModifierList(): List<LifeModifier> =
     (0 until length()).map { getJSONObject(it).toModifier() }
+
+private fun Set<ActionCategory>.toJsonArray(): JSONArray = JSONArray().also { array ->
+    forEach { array.put(it.name) }
+}
+
+private fun JSONArray.toActionCategorySet(): Set<ActionCategory> =
+    (0 until length()).map { ActionCategory.valueOf(getString(it)) }.toSet()
+
+private fun List<TimedOpportunityState>.timedOpportunitiesToJsonArray(): JSONArray = JSONArray().also { array ->
+    forEach { array.put(it.toJson()) }
+}
+
+private fun JSONArray.toTimedOpportunityList(): List<TimedOpportunityState> =
+    (0 until length()).map { getJSONObject(it).toTimedOpportunity() }
+
+private fun Map<String, Int>.toJsonObject(): JSONObject = JSONObject().also { json ->
+    forEach { (key, value) -> json.put(key, value) }
+}
+
+private fun JSONObject.toStringIntMap(): Map<String, Int> =
+    keys().asSequence().associateWith { key -> getInt(key) }
 
 private fun List<HistoryEntry>.historyToJsonArray(): JSONArray = JSONArray().also { array ->
     forEach { array.put(it.toJson()) }

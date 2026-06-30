@@ -1,5 +1,7 @@
 package com.azizjonkasimov.lifesimulator.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +27,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -44,12 +47,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.azizjonkasimov.lifesimulator.domain.model.ActionAvailability
+import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
 import com.azizjonkasimov.lifesimulator.domain.model.ActionCategory
 import com.azizjonkasimov.lifesimulator.domain.model.CoreStats
+import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
 import com.azizjonkasimov.lifesimulator.domain.model.DailyActionDefinition
 import com.azizjonkasimov.lifesimulator.domain.model.DashboardSnapshot
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
@@ -59,6 +66,7 @@ import com.azizjonkasimov.lifesimulator.domain.model.HistoryKind
 import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
+import com.azizjonkasimov.lifesimulator.domain.model.TimedOpportunityState
 import com.azizjonkasimov.lifesimulator.update.UpdatePrompt
 import com.azizjonkasimov.lifesimulator.update.rememberUpdatePromptState
 
@@ -76,6 +84,7 @@ fun LifeSimulatorApp(
             currentVersionLabel = updatePromptState.currentVersionLabel,
             updateChecking = updatePromptState.checking,
             onSelectTab = viewModel::selectTab,
+            onSelectDailyFocus = viewModel::selectDailyFocus,
             onPerformAction = viewModel::performAction,
             onAdvanceDay = viewModel::advanceDay,
             onCheckForUpdates = { updatePromptState.checkForUpdates(showResult = true) },
@@ -155,6 +164,7 @@ private fun ActiveGameScreen(
     currentVersionLabel: String,
     updateChecking: Boolean,
     onSelectTab: (GameTab) -> Unit,
+    onSelectDailyFocus: (DailyFocus) -> Unit,
     onPerformAction: (String) -> Unit,
     onAdvanceDay: () -> Unit,
     onCheckForUpdates: () -> Unit,
@@ -182,13 +192,19 @@ private fun ActiveGameScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            Header(state = state, dashboard = dashboard, messages = uiState.messages)
+            Header(
+                state = state,
+                dashboard = dashboard,
+                messages = uiState.messages,
+                lastActionDeltas = uiState.lastActionDeltas,
+            )
             Spacer(modifier = Modifier.height(12.dp))
             when (uiState.selectedTab) {
                 GameTab.DASHBOARD -> DashboardTab(
                     state = state,
                     dashboard = dashboard,
                     actions = uiState.actions,
+                    onSelectDailyFocus = onSelectDailyFocus,
                     onPerformAction = onPerformAction,
                     onAdvanceDay = onAdvanceDay,
                 )
@@ -211,6 +227,7 @@ private fun Header(
     state: GameState,
     dashboard: DashboardSnapshot,
     messages: List<String>,
+    lastActionDeltas: List<ActionDelta>,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -234,9 +251,11 @@ private fun Header(
             }
             StatusBadge(text = dashboard.status)
         }
-        if (messages.isNotEmpty()) {
+        AnimatedVisibility(visible = messages.isNotEmpty() || lastActionDeltas.isNotEmpty()) {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.medium,
             ) {
@@ -250,6 +269,9 @@ private fun Header(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                    if (lastActionDeltas.isNotEmpty()) {
+                        DeltaChipRow(deltas = lastActionDeltas)
                     }
                 }
             }
@@ -278,6 +300,7 @@ private fun DashboardTab(
     state: GameState,
     dashboard: DashboardSnapshot,
     actions: List<ActionAvailability>,
+    onSelectDailyFocus: (DailyFocus) -> Unit,
     onPerformAction: (String) -> Unit,
     onAdvanceDay: () -> Unit,
 ) {
@@ -286,6 +309,18 @@ private fun DashboardTab(
         contentPadding = PaddingValues(bottom = 72.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        item {
+            TodayPlanCard(
+                state = state,
+                dashboard = dashboard,
+                onSelectDailyFocus = onSelectDailyFocus,
+            )
+        }
+        if (state.timedOpportunities.isNotEmpty()) {
+            item {
+                OpportunityPanel(state = state)
+            }
+        }
         item {
             DashboardMetricGrid(state = state, dashboard = dashboard)
         }
@@ -314,13 +349,134 @@ private fun DashboardTab(
             RecentLog(history = state.history)
         }
         item {
-            Button(
-                onClick = onAdvanceDay,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(text = "End Day")
+            EndDayButton(onAdvanceDay = onAdvanceDay)
+        }
+    }
+}
+
+@Composable
+private fun TodayPlanCard(
+    state: GameState,
+    dashboard: DashboardSnapshot,
+    onSelectDailyFocus: (DailyFocus) -> Unit,
+) {
+    SectionCard(title = "Today's Plan") {
+        Text(
+            text = dashboard.pressureSummary,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = state.dayPlan.activeFocus.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = state.dayPlan.reason,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Pill(text = if (state.dayPlan.locked) "Locked" else "Open")
+        }
+        FocusPicker(
+            activeFocus = state.dayPlan.activeFocus,
+            enabled = !state.dayPlan.locked,
+            onSelectDailyFocus = onSelectDailyFocus,
+        )
+        Text(
+            text = focusProgressText(state),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun FocusPicker(
+    activeFocus: DailyFocus,
+    enabled: Boolean,
+    onSelectDailyFocus: (DailyFocus) -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        DailyFocus.entries.forEach { focus ->
+            FilterChip(
+                selected = focus == activeFocus,
+                enabled = enabled,
+                onClick = { onSelectDailyFocus(focus) },
+                label = { Text(text = focus.label) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun OpportunityPanel(state: GameState) {
+    SectionCard(title = "Timed Opportunities") {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            state.timedOpportunities.forEach { opportunity ->
+                OpportunityRow(opportunity = opportunity, day = state.day)
             }
         }
+    }
+}
+
+@Composable
+private fun OpportunityRow(
+    opportunity: TimedOpportunityState,
+    day: Int,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = opportunityTitle(opportunity.id),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Pill(text = "${(opportunity.expiresOnDay - day + 1).coerceAtLeast(0)}d")
+        }
+        Text(
+            text = opportunityDescription(opportunity.id),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LinearProgressIndicator(
+            progress = { opportunity.progress.coerceAtMost(opportunity.target) / opportunity.target.toFloat() },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = "${opportunity.progress.coerceAtMost(opportunity.target)} / ${opportunity.target}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun EndDayButton(onAdvanceDay: () -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    Button(
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onAdvanceDay()
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(text = "End Day")
     }
 }
 
@@ -401,6 +557,7 @@ private fun CompactActionRow(
     availability: ActionAvailability,
     onPerformAction: (String) -> Unit,
 ) {
+    val haptic = LocalHapticFeedback.current
     val action = availability.action
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -414,14 +571,18 @@ private fun CompactActionRow(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = costText(action),
+                text = availability.recommendationReason ?: costText(action),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            DeltaChipRow(deltas = availability.previewDeltas.take(4))
         }
         Button(
             enabled = availability.isAvailable,
-            onClick = { onPerformAction(action.id) },
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onPerformAction(action.id)
+            },
         ) {
             Text(text = "Do")
         }
@@ -493,12 +654,34 @@ private fun ActionsTab(
     actions: List<ActionAvailability>,
     onPerformAction: (String) -> Unit,
 ) {
-    val grouped = actions.groupBy { it.action.category }
+    val sortedActions = actions.sortedWith(
+        compareByDescending<ActionAvailability> { it.isAvailable && it.recommendationReason != null }
+            .thenByDescending { it.isAvailable && it.focusMatch }
+            .thenBy { it.action.category.ordinal },
+    )
+    val recommended = sortedActions.filter { it.isAvailable && it.recommendationReason != null }.take(5)
+    val recommendedIds = recommended.map { it.action.id }.toSet()
+    val grouped = sortedActions.filterNot { it.action.id in recommendedIds }.groupBy { it.action.category }
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(bottom = 72.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        if (recommended.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Recommended",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            items(recommended, key = { it.action.id }) { availability ->
+                ActionCard(
+                    availability = availability,
+                    onPerformAction = onPerformAction,
+                )
+            }
+        }
         ActionCategory.entries.forEach { category ->
             val categoryActions = grouped[category].orEmpty()
             if (categoryActions.isNotEmpty()) {
@@ -526,6 +709,7 @@ private fun ActionCard(
     availability: ActionAvailability,
     onPerformAction: (String) -> Unit,
 ) {
+    val haptic = LocalHapticFeedback.current
     val action = availability.action
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -552,7 +736,7 @@ private fun ActionCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Pill(text = action.category.label)
+                Pill(text = availability.recommendationReason ?: action.category.label)
             }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -562,6 +746,7 @@ private fun ActionCard(
                 action.tags.forEach { Pill(text = it) }
                 action.effectSummary().forEach { Pill(text = it) }
             }
+            DeltaChipRow(deltas = availability.previewDeltas)
             if (!availability.isAvailable && availability.reason != null) {
                 Text(
                     text = availability.reason,
@@ -570,7 +755,10 @@ private fun ActionCard(
                 )
             }
             Button(
-                onClick = { onPerformAction(action.id) },
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPerformAction(action.id)
+                },
                 enabled = availability.isAvailable,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -887,7 +1075,9 @@ private fun SectionCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(
@@ -943,6 +1133,75 @@ private fun Pill(text: String) {
         )
     }
 }
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun DeltaChipRow(deltas: List<ActionDelta>) {
+    if (deltas.isEmpty()) return
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        deltas.forEach { delta ->
+            DeltaChip(delta = delta)
+        }
+    }
+}
+
+@Composable
+private fun DeltaChip(delta: ActionDelta) {
+    val isGood = if (delta.positiveIsGood) delta.amount > 0 else delta.amount < 0
+    val container = when {
+        delta.amount == 0 -> MaterialTheme.colorScheme.surfaceVariant
+        isGood -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
+        else -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+    }
+    val content = when {
+        delta.amount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
+        isGood -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.error
+    }
+    Surface(
+        color = container,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Text(
+            text = "${delta.label} ${signed(delta.amount)}",
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = content,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun focusProgressText(state: GameState): String =
+    if (state.dayPlan.activeFocus == DailyFocus.BALANCED) {
+        "${state.dayPlan.categoriesCompleted.size.coerceAtMost(3)} / 3 categories for balanced reward"
+    } else {
+        "${state.dayPlan.focusActionsCompleted} matching actions today"
+    }
+
+private fun opportunityTitle(id: String): String = when (id) {
+    "bill_buffer" -> "Bill Buffer"
+    "recovery_window" -> "Recovery Window"
+    "promotion_push" -> "Promotion Push"
+    "reconnect" -> "Reconnect"
+    "debt_brake" -> "Debt Brake"
+    else -> id
+}
+
+private fun opportunityDescription(id: String): String = when (id) {
+    "bill_buffer" -> "Reach a cash buffer before bills hit."
+    "recovery_window" -> "Bring stress down before burnout compounds."
+    "promotion_push" -> "Finish the current promotion push in time."
+    "reconnect" -> "Complete social actions or rebuild relationship average."
+    "debt_brake" -> "Reduce debt enough to relieve credit pressure."
+    else -> "Complete this timed pressure goal."
+}
+
+private fun signed(value: Int): String = if (value > 0) "+$value" else value.toString()
 
 private fun GameTab.icon(): ImageVector = when (this) {
     GameTab.DASHBOARD -> Icons.Filled.Dashboard

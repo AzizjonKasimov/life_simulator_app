@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.azizjonkasimov.lifesimulator.data.SaveRepository
 import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
+import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
+import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 import kotlinx.coroutines.launch
@@ -21,6 +23,7 @@ class LifeSimulatorViewModel(
 
     private var currentGameState: GameState? = null
     private var messages: List<String> = emptyList()
+    private var lastActionDeltas: List<ActionDelta> = emptyList()
 
     init {
         viewModelScope.launch {
@@ -35,6 +38,7 @@ class LifeSimulatorViewModel(
         viewModelScope.launch {
             val gameState = engine.startNewLife(archetype)
             messages = listOf("Started a new ${archetype.displayName} life.")
+            lastActionDeltas = emptyList()
             repository.saveGameState(gameState)
         }
     }
@@ -44,6 +48,7 @@ class LifeSimulatorViewModel(
         val result = engine.performAction(state, actionId)
         viewModelScope.launch {
             messages = result.errorMessage?.let { listOf(it) } ?: result.messages
+            lastActionDeltas = result.actionDeltas
             if (result.success) {
                 repository.saveGameState(result.state)
             } else {
@@ -57,19 +62,36 @@ class LifeSimulatorViewModel(
         val result = engine.advanceDay(state)
         viewModelScope.launch {
             messages = result.messages
+            lastActionDeltas = emptyList()
             repository.saveGameState(result.state)
+        }
+    }
+
+    fun selectDailyFocus(focus: DailyFocus) {
+        val state = currentGameState ?: return
+        val result = engine.selectDailyFocus(state, focus)
+        viewModelScope.launch {
+            messages = result.errorMessage?.let { listOf(it) } ?: result.messages
+            lastActionDeltas = emptyList()
+            if (result.success) {
+                repository.saveGameState(result.state)
+            } else {
+                rebuildState(isLoading = false)
+            }
         }
     }
 
     fun resetSave() {
         viewModelScope.launch {
             messages = emptyList()
+            lastActionDeltas = emptyList()
             repository.resetSave()
         }
     }
 
     fun showMessage(message: String) {
         messages = listOf(message)
+        lastActionDeltas = emptyList()
         rebuildState(isLoading = false)
     }
 
@@ -89,6 +111,7 @@ class LifeSimulatorViewModel(
             dashboard = state?.let(engine::dashboardSnapshot),
             selectedTab = selectedTab,
             messages = messages,
+            lastActionDeltas = lastActionDeltas,
         )
     }
 }

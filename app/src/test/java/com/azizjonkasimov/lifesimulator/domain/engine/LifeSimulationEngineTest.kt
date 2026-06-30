@@ -4,13 +4,13 @@ import com.azizjonkasimov.lifesimulator.domain.model.ActionEffect
 import com.azizjonkasimov.lifesimulator.domain.model.CalendarState
 import com.azizjonkasimov.lifesimulator.domain.model.CareerState
 import com.azizjonkasimov.lifesimulator.domain.model.CoreStats
+import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
 import com.azizjonkasimov.lifesimulator.domain.model.FinanceState
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.LifeArchetype
 import com.azizjonkasimov.lifesimulator.domain.model.LifeEventDefinition
-import com.azizjonkasimov.lifesimulator.domain.model.LifeProfile
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
-import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
+import com.azizjonkasimov.lifesimulator.domain.model.TimedOpportunityState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -21,7 +21,7 @@ class LifeSimulationEngineTest {
     private val engine = LifeSimulationEngine()
 
     @Test
-    fun newLifeInitializesEachArchetypeWithV2Systems() {
+    fun newLifeInitializesEachArchetypeWithV4Systems() {
         LifeArchetype.entries.forEach { archetype ->
             val state = engine.startNewLife(archetype)
 
@@ -33,13 +33,17 @@ class LifeSimulationEngineTest {
             assertTrue(state.career.salaryPerShift > 0)
             assertTrue(state.relationships.average > 0)
             assertEquals(4, state.goals.size)
+            assertEquals(1, state.dayPlan.day)
+            assertEquals(state.dayPlan.recommendedFocus, state.dayPlan.activeFocus)
+            assertFalse(state.dayPlan.locked)
+            assertTrue(state.timedOpportunities.size <= 2)
             assertTrue(state.history.isNotEmpty())
             assertNotNull(engine.dashboardSnapshot(state).focusGoal)
         }
     }
 
     @Test
-    fun actionAppliesCostsAndCrossSystemEffects() {
+    fun actionAppliesCostsCrossSystemEffectsAndDeltas() {
         val initial = engine.startNewLife(LifeArchetype.JUNIOR_WORKER)
         val result = engine.performAction(initial, "work_shift")
 
@@ -50,6 +54,7 @@ class LifeSimulationEngineTest {
         assertTrue(result.state.skills.career > initial.skills.career)
         assertTrue(result.state.career.reputation > initial.career.reputation)
         assertTrue(result.state.career.promotionReadiness > initial.career.promotionReadiness)
+        assertTrue(result.actionDeltas.any { it.label == "Cash" && it.amount > 0 })
     }
 
     @Test
@@ -74,6 +79,7 @@ class LifeSimulationEngineTest {
                 debt = 100,
                 nextBillDueDay = 7,
             ),
+            timedOpportunities = emptyList(),
         )
         val result = engine.advanceDay(initial)
 
@@ -82,6 +88,128 @@ class LifeSimulationEngineTest {
         assertTrue(result.state.finances.debt > initial.finances.debt)
         assertTrue(result.state.relationships.friends < initial.relationships.friends)
         assertTrue(result.messages.any { it.contains("Weekly bill") })
+    }
+
+    @Test
+    fun focusRecommendationPriorityChoosesExpectedFocuses() {
+        val focusEngine = LifeSimulationEngine(events = emptyList())
+
+        assertEquals(
+            DailyFocus.MONEY,
+            focusEngine.advanceDay(stableState().copy(finances = stableState().finances.copy(cash = 40))).state.dayPlan.recommendedFocus,
+        )
+        assertEquals(
+            DailyFocus.RECOVERY,
+            focusEngine.advanceDay(stableState().copy(stats = stableState().stats.copy(stress = 90))).state.dayPlan.recommendedFocus,
+        )
+        assertEquals(
+            DailyFocus.CAREER,
+            focusEngine.advanceDay(stableState().copy(career = stableState().career.copy(promotionReadiness = 85))).state.dayPlan.recommendedFocus,
+        )
+        assertEquals(
+            DailyFocus.SOCIAL,
+            focusEngine.advanceDay(stableState().copy(relationships = RelationshipState(family = 30, friends = 40, network = 45))).state.dayPlan.recommendedFocus,
+        )
+        assertEquals(
+            DailyFocus.BALANCED,
+            focusEngine.advanceDay(stableState()).state.dayPlan.recommendedFocus,
+        )
+    }
+
+    @Test
+    fun focusOverrideWorksBeforeFirstActionAndLocksAfterAction() {
+        val initial = engine.startNewLife(LifeArchetype.STUDENT)
+        val selected = engine.selectDailyFocus(initial, DailyFocus.RECOVERY)
+
+        assertTrue(selected.success)
+        assertEquals(DailyFocus.RECOVERY, selected.state.dayPlan.activeFocus)
+
+        val afterAction = engine.performAction(selected.state, "rest").state
+        val locked = engine.selectDailyFocus(afterAction, DailyFocus.CAREER)
+
+        assertFalse(locked.success)
+        assertEquals(DailyFocus.RECOVERY, locked.state.dayPlan.activeFocus)
+    }
+
+    @Test
+    fun focusBonusesRewardsAndMissPenaltiesApply() {
+        val moneyState = engine.selectDailyFocus(engine.startNewLife(LifeArchetype.JUNIOR_WORKER), DailyFocus.MONEY).state
+        val afterBudget = engine.performAction(moneyState, "budget_review").state
+
+        assertEquals(moneyState.finances.debt - 60, afterBudget.finances.debt)
+
+        val afterMoneyDay = engine.advanceDay(afterBudget)
+        assertTrue(afterMoneyDay.messages.any { it.contains("Money focus completed") })
+        assertTrue(afterMoneyDay.state.finances.cash >= afterBudget.finances.cash + 25)
+
+        val careerState = engine.selectDailyFocus(engine.startNewLife(LifeArchetype.FREELANCER), DailyFocus.CAREER).state
+        val missed = engine.advanceDay(careerState)
+
+        assertTrue(missed.messages.any { it.contains("Career focus was missed") })
+    }
+
+    @Test
+    fun timedOpportunitiesProgressCompleteFailAndCooldown() {
+        val billState = stableState().copy(
+            finances = stableState().finances.copy(cash = 240, weeklyLivingCost = 140, nextBillDueDay = 7),
+            timedOpportunities = listOf(TimedOpportunityState("bill_buffer", progress = 100, target = 240, baseline = 100, expiresOnDay = 2)),
+        )
+        val billResult = engine.advanceDay(billState)
+        assertTrue(billResult.messages.any { it.contains("Opportunity completed: Bill Buffer") })
+        assertFalse(billResult.state.timedOpportunities.any { it.id == "bill_buffer" })
+        assertTrue(billResult.state.opportunityCooldowns.containsKey("bill_buffer"))
+
+        val reconnectState = stableState().copy(
+            relationships = RelationshipState(family = 35, friends = 40, network = 35),
+            timedOpportunities = listOf(TimedOpportunityState("reconnect", progress = 0, target = 2, baseline = 40, expiresOnDay = 4)),
+        )
+        val firstSocial = engine.performAction(reconnectState, "call_family").state
+        assertEquals(1, firstSocial.timedOpportunities.first { it.id == "reconnect" }.progress)
+        val secondSocial = engine.performAction(firstSocial, "call_family")
+        assertTrue(secondSocial.messages.any { it.contains("Opportunity completed: Reconnect") })
+
+        val failedState = stableState().copy(
+            finances = stableState().finances.copy(cash = 20),
+            timedOpportunities = listOf(TimedOpportunityState("bill_buffer", progress = 20, target = 240, baseline = 20, expiresOnDay = 1)),
+        )
+        val failed = engine.advanceDay(failedState)
+        assertTrue(failed.messages.any { it.contains("Opportunity expired: Bill Buffer") })
+        assertTrue(failed.state.opportunityCooldowns.containsKey("bill_buffer"))
+    }
+
+    @Test
+    fun remainingTimedOpportunityTypesCanComplete() {
+        val recovery = stableState().copy(
+            stats = stableState().stats.copy(stress = 50),
+            timedOpportunities = listOf(TimedOpportunityState("recovery_window", progress = 0, target = 20, baseline = 70, expiresOnDay = 3)),
+        )
+        assertTrue(engine.advanceDay(recovery).messages.any { it.contains("Recovery Window") })
+
+        val promotion = stableState().copy(
+            career = stableState().career.copy(promotionReadiness = 100),
+            timedOpportunities = listOf(TimedOpportunityState("promotion_push", progress = 90, target = 100, baseline = 90, expiresOnDay = 3)),
+        )
+        assertTrue(engine.advanceDay(promotion).messages.any { it.contains("Promotion Push") })
+
+        val debt = stableState().copy(
+            finances = stableState().finances.copy(debt = 100),
+            timedOpportunities = listOf(TimedOpportunityState("debt_brake", progress = 0, target = 90, baseline = 200, expiresOnDay = 5)),
+        )
+        assertTrue(engine.advanceDay(debt).messages.any { it.contains("Debt Brake") })
+    }
+
+    @Test
+    fun archetypeSpecificActionsAppearOnlyForTheirArchetype() {
+        val studentActions = engine.actionAvailability(engine.startNewLife(LifeArchetype.STUDENT)).map { it.action.id }
+        val workerActions = engine.actionAvailability(engine.startNewLife(LifeArchetype.JUNIOR_WORKER)).map { it.action.id }
+        val freelancerActions = engine.actionAvailability(engine.startNewLife(LifeArchetype.FREELANCER)).map { it.action.id }
+
+        assertTrue("exam_prep" in studentActions)
+        assertFalse("manager_check_in" in studentActions)
+        assertTrue("manager_check_in" in workerActions)
+        assertFalse("pitch_client" in workerActions)
+        assertTrue("pitch_client" in freelancerActions)
+        assertFalse("exam_prep" in freelancerActions)
     }
 
     @Test
@@ -97,18 +225,12 @@ class LifeSimulationEngineTest {
                 ),
             ),
         )
-        val initial = GameState(
-            profile = LifeProfile("Test", 22, LifeArchetype.FREELANCER),
+        val initial = stableState().copy(
             calendar = CalendarState(day = 3, timeRemaining = 0),
-            stats = CoreStats(health = 60, mood = 60, energy = 70, stress = 50, social = 50),
-            skills = SkillSet(knowledge = 20, fitness = 10, career = 25, communication = 15, creativity = 18),
-            finances = FinanceState(cash = 400, debt = 0, weeklyLivingCost = 180, nextBillDueDay = 7, creditScore = 660),
-            career = CareerState("Independent freelancer", level = 1, xp = 25, reputation = 25, promotionReadiness = 25, salaryPerShift = 95),
-            relationships = RelationshipState(family = 50, friends = 50, network = 50),
-            goals = engine.startNewLife(LifeArchetype.FREELANCER).goals,
-            modifiers = emptyList(),
             rngSeed = 12345L,
             history = emptyList(),
+            timedOpportunities = emptyList(),
+            opportunityCooldowns = emptyMap(),
         )
 
         val first = deterministicEngine.advanceDay(initial)
@@ -117,4 +239,14 @@ class LifeSimulationEngineTest {
         assertEquals(first.state, second.state)
         assertEquals(first.messages, second.messages)
     }
+
+    private fun stableState(): GameState = engine.startNewLife(LifeArchetype.FREELANCER).copy(
+        calendar = CalendarState(day = 1, timeRemaining = LifeSimulationEngine.DAILY_TIME_BUDGET),
+        stats = CoreStats(health = 70, mood = 65, energy = 80, stress = 35, social = 60),
+        finances = FinanceState(cash = 500, debt = 0, weeklyLivingCost = 180, nextBillDueDay = 7, creditScore = 670),
+        career = CareerState("Independent freelancer", level = 1, xp = 20, reputation = 25, promotionReadiness = 30, salaryPerShift = 95),
+        relationships = RelationshipState(family = 60, friends = 60, network = 60),
+        timedOpportunities = emptyList(),
+        opportunityCooldowns = emptyMap(),
+    )
 }

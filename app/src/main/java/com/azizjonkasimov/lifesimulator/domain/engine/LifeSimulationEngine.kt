@@ -1,12 +1,16 @@
 package com.azizjonkasimov.lifesimulator.domain.engine
 
 import com.azizjonkasimov.lifesimulator.domain.model.ActionAvailability
+import com.azizjonkasimov.lifesimulator.domain.model.ActionCategory
+import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
 import com.azizjonkasimov.lifesimulator.domain.model.ActionEffect
 import com.azizjonkasimov.lifesimulator.domain.model.CalendarState
 import com.azizjonkasimov.lifesimulator.domain.model.CareerState
 import com.azizjonkasimov.lifesimulator.domain.model.CoreStats
 import com.azizjonkasimov.lifesimulator.domain.model.DailyActionDefinition
+import com.azizjonkasimov.lifesimulator.domain.model.DailyFocus
 import com.azizjonkasimov.lifesimulator.domain.model.DashboardSnapshot
+import com.azizjonkasimov.lifesimulator.domain.model.DayPlanState
 import com.azizjonkasimov.lifesimulator.domain.model.FinanceState
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.GoalCategory
@@ -20,6 +24,7 @@ import com.azizjonkasimov.lifesimulator.domain.model.LifeProfile
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
+import com.azizjonkasimov.lifesimulator.domain.model.TimedOpportunityState
 
 class LifeSimulationEngine(
     private val actions: List<DailyActionDefinition> = ActionCatalog.actions,
@@ -27,7 +32,7 @@ class LifeSimulationEngine(
 ) {
     fun startNewLife(archetype: LifeArchetype): GameState {
         val preset = startingPreset(archetype)
-        return GameState(
+        val base = GameState(
             profile = LifeProfile(
                 name = "Alex Rivers",
                 age = 22,
@@ -41,6 +46,9 @@ class LifeSimulationEngine(
             relationships = preset.relationships,
             goals = defaultGoals(preset.finances.cash, preset.career.promotionReadiness, preset.relationships.average),
             modifiers = emptyList(),
+            dayPlan = emptyDayPlan(day = 1),
+            timedOpportunities = emptyList(),
+            opportunityCooldowns = emptyMap(),
             rngSeed = seedFor(archetype),
             history = listOf(
                 HistoryEntry(
@@ -51,6 +59,7 @@ class LifeSimulationEngine(
                 ),
             ),
         )
+        return prepareNewDay(base).state
     }
 
     fun dashboardSnapshot(state: GameState): DashboardSnapshot {
@@ -74,20 +83,12 @@ class LifeSimulationEngine(
             state.modifiers.forEach { add("${it.title}: ${it.daysRemaining} days left.") }
         }.take(4)
 
-        val quickActions = buildList {
-            if (state.finances.cash < state.finances.weeklyLivingCost) add("work_shift")
-            if (state.finances.debt > 0) add("budget_review")
-            if (state.stats.stress >= 65 || state.stats.energy <= 35) add("rest")
-            if (state.relationships.average <= 45) add("call_family")
-            add("study_course")
-            add("exercise")
-        }.distinct().take(4)
-
         return DashboardSnapshot(
             headline = "Week ${state.week}, Day ${state.day}",
             status = statusFor(state),
             alerts = alerts,
-            quickActionIds = quickActions,
+            pressureSummary = pressureSummaryFor(state),
+            quickActionIds = quickActionIdsFor(state),
             nextBillLabel = if (daysUntilBill == 0) {
                 "Due today: ${state.finances.weeklyLivingCost} USD"
             } else {
@@ -99,17 +100,45 @@ class LifeSimulationEngine(
     }
 
     fun actionAvailability(state: GameState): List<ActionAvailability> =
-        actions.map { action ->
+        availableActionsFor(state).map { action ->
             val reason = unavailableReason(state, action)
+            val focusMatch = focusMatches(state.dayPlan.activeFocus, action, state.dayPlan)
+            val effect = dynamicEffectFor(state, action) + focusBonusFor(state, action)
             ActionAvailability(
                 action = action,
                 isAvailable = reason == null,
                 reason = reason,
+                previewDeltas = buildActionDeltas(
+                    action = action,
+                    effect = effect,
+                    opportunityProgressDelta = opportunityProgressPreview(state, action),
+                ),
+                focusMatch = focusMatch,
+                recommendationReason = recommendationReasonFor(state, action, focusMatch),
             )
         }
 
+    fun selectDailyFocus(state: GameState, focus: DailyFocus): SimulationResult {
+        if (state.dayPlan.locked || state.dayPlan.actionsTaken > 0) {
+            return SimulationResult(
+                state = state,
+                success = false,
+                messages = emptyList(),
+                errorMessage = "Today's focus is locked after your first action.",
+            )
+        }
+
+        val updated = state.copy(dayPlan = state.dayPlan.copy(activeFocus = focus))
+        val message = if (focus == state.dayPlan.recommendedFocus) {
+            "Following the suggested ${focus.label} focus."
+        } else {
+            "Switched today's focus to ${focus.label}."
+        }
+        return SimulationResult(state = updated, success = true, messages = listOf(message))
+    }
+
     fun performAction(state: GameState, actionId: String): SimulationResult {
-        val action = actions.firstOrNull { it.id == actionId }
+        val action = availableActionsFor(state).firstOrNull { it.id == actionId }
             ?: return SimulationResult(
                 state = state,
                 success = false,
@@ -128,7 +157,14 @@ class LifeSimulationEngine(
         }
 
         val beforeGoals = state.goals
-        val effect = dynamicEffectFor(state, action)
+        val baseEffect = dynamicEffectFor(state, action)
+        val focusBonus = focusBonusFor(state, action)
+        val effect = baseEffect + focusBonus
+        val actionDeltas = buildActionDeltas(
+            action = action,
+            effect = effect,
+            opportunityProgressDelta = opportunityProgressPreview(state, action),
+        )
         val charged = state.copy(
             calendar = state.calendar.copy(
                 timeRemaining = (state.timeRemaining - action.timeCost).coerceAtLeast(0),
@@ -137,12 +173,17 @@ class LifeSimulationEngine(
             stats = state.stats.copy(energy = state.stats.energy - action.energyCost).clamped(),
         )
         val applied = applyEffect(charged, effect)
-            .let { if (action.id == "rest") it.copy(modifiers = it.modifiers.filterNot { modifier -> modifier.id == "burnout_risk" }) else it }
+            .let { if (action.id == "rest") it.copy(modifiers = it.modifiers.filterNot { modifier -> modifier.id == BURNOUT_RISK_ID }) else it }
+            .trackActionInPlan(action)
+            .refreshDynamicGoals()
+        val opportunityProgressed = refreshOpportunityProgress(applied, action)
+        val opportunityUpdate = resolveOpportunities(opportunityProgressed, failExpired = false)
+        val afterOpportunity = opportunityUpdate.state
             .refreshDynamicGoals()
             .settlePromotion()
 
-        val completedGoals = newlyCompleted(beforeGoals, applied.goals)
-        val rewarded = applyGoalRewards(applied, completedGoals)
+        val completedGoals = newlyCompleted(beforeGoals, afterOpportunity.goals)
+        val rewarded = applyGoalRewards(afterOpportunity, completedGoals)
         val updated = rewarded.copy(
             history = buildList {
                 addAll(rewarded.history)
@@ -154,6 +195,7 @@ class LifeSimulationEngine(
                         kind = HistoryKind.ACTION,
                     ),
                 )
+                addAll(opportunityUpdate.entries)
                 completedGoals.forEach { goal ->
                     add(
                         HistoryEntry(
@@ -172,8 +214,13 @@ class LifeSimulationEngine(
             success = true,
             messages = buildList {
                 add("${action.title} completed.")
+                if (focusBonus.hasAnyImpact()) {
+                    add("${state.dayPlan.activeFocus.label} focus gave a bonus.")
+                }
+                addAll(opportunityUpdate.messages)
                 completedGoals.forEach { add("Goal completed: ${it.title}.") }
             },
+            actionDeltas = actionDeltas,
         )
     }
 
@@ -214,25 +261,21 @@ class LifeSimulationEngine(
         val withEvent = eventRoll.event?.let { applyEffect(recovered, it.effect) } ?: recovered
         val withBurnoutRisk = if (
             withEvent.stats.stress >= 84 &&
-            withEvent.modifiers.none { it.id == "burnout_risk" }
+            withEvent.modifiers.none { it.id == BURNOUT_RISK_ID }
         ) {
-            withEvent.copy(
-                modifiers = withEvent.modifiers + LifeModifier(
-                    id = "burnout_risk",
-                    title = "Burnout risk",
-                    description = "Daily energy and mood suffer until you recover.",
-                    daysRemaining = 3,
-                    moodDelta = -2,
-                    energyDelta = -6,
-                    stressDelta = 3,
-                ),
-            )
+            withEvent.copy(modifiers = withEvent.modifiers + burnoutRiskModifier())
         } else {
             withEvent
         }
-        val completedGoals = newlyCompleted(beforeGoals, withBurnoutRisk.goals)
-        val rewarded = applyGoalRewards(withBurnoutRisk, completedGoals)
-        val nextDay = rewarded.copy(
+        val focusOutcome = applyFocusEndOfDay(withBurnoutRisk)
+        val opportunityProgressed = refreshOpportunityProgress(focusOutcome.state.refreshDynamicGoals(), action = null)
+        val opportunityUpdate = resolveOpportunities(opportunityProgressed, failExpired = true)
+        val afterOpportunity = opportunityUpdate.state
+            .refreshDynamicGoals()
+            .settlePromotion()
+        val completedGoals = newlyCompleted(beforeGoals, afterOpportunity.goals)
+        val rewarded = applyGoalRewards(afterOpportunity, completedGoals)
+        val nextDayBase = rewarded.copy(
             calendar = CalendarState(day = rewarded.day + 1, timeRemaining = DAILY_TIME_BUDGET),
             rngSeed = eventRoll.nextSeed,
             history = buildList {
@@ -248,6 +291,8 @@ class LifeSimulationEngine(
                         ),
                     )
                 }
+                addAll(focusOutcome.entries)
+                addAll(opportunityUpdate.entries)
                 completedGoals.forEach { goal ->
                     add(
                         HistoryEntry(
@@ -268,6 +313,17 @@ class LifeSimulationEngine(
                 )
             }.trimHistory(),
         )
+        val newDay = prepareNewDay(nextDayBase)
+        val nextDay = newDay.newOpportunityTitle?.let { title ->
+            newDay.state.copy(
+                history = (newDay.state.history + HistoryEntry(
+                    day = newDay.state.day,
+                    title = "Opportunity opened: $title",
+                    detail = "A timed pressure goal is now active.",
+                    kind = HistoryKind.GOAL,
+                )).trimHistory(),
+            )
+        } ?: newDay.state
 
         return SimulationResult(
             state = nextDay,
@@ -275,11 +331,19 @@ class LifeSimulationEngine(
             messages = buildList {
                 billResult.message?.let { add(it) }
                 eventRoll.event?.let { add(it.title) }
+                addAll(focusOutcome.messages)
+                addAll(opportunityUpdate.messages)
                 completedGoals.forEach { add("Goal completed: ${it.title}.") }
+                newDay.newOpportunityTitle?.let { add("New opportunity: $it.") }
                 add("Day ${state.day + 1} begins.")
             },
         )
     }
+
+    private fun availableActionsFor(state: GameState): List<DailyActionDefinition> =
+        actions.filter { action ->
+            action.allowedArchetypes.isEmpty() || state.archetype in action.allowedArchetypes
+        }
 
     private fun unavailableReason(state: GameState, action: DailyActionDefinition): String? = when {
         state.timeRemaining < action.timeCost -> "Not enough time left today."
@@ -292,6 +356,7 @@ class LifeSimulationEngine(
         "work_shift" -> action.effect.copy(cashDelta = state.career.salaryPerShift)
         "overtime" -> action.effect.copy(cashDelta = (state.career.salaryPerShift * 0.65f).toInt() + 25)
         "freelance_gig" -> action.effect.copy(cashDelta = 110 + (state.skills.creativity / 3) + (state.career.reputation / 4))
+        "pitch_client" -> action.effect.copy(cashDelta = 65 + (state.skills.communication / 3) + (state.career.reputation / 3))
         "budget_review" -> if (state.finances.debt > 0) {
             action.effect.copy(cashDelta = 0, debtDelta = -45, creditScoreDelta = 4)
         } else {
@@ -451,6 +516,443 @@ class LifeSimulationEngine(
         return EventRoll(event = event, nextSeed = nextSeed)
     }
 
+    private fun prepareNewDay(state: GameState): NewDayResult {
+        val recommendation = focusRecommendationFor(state)
+        val planned = state.copy(
+            opportunityCooldowns = state.opportunityCooldowns.filterValues { state.day <= it },
+            dayPlan = DayPlanState(
+                day = state.day,
+                recommendedFocus = recommendation.focus,
+                activeFocus = recommendation.focus,
+                reason = recommendation.reason,
+                locked = false,
+                actionsTaken = 0,
+                focusActionsCompleted = 0,
+                categoriesCompleted = emptySet(),
+            ),
+        )
+        return maybeGenerateOpportunity(planned)
+    }
+
+    private fun emptyDayPlan(day: Int): DayPlanState = DayPlanState(
+        day = day,
+        recommendedFocus = DailyFocus.BALANCED,
+        activeFocus = DailyFocus.BALANCED,
+        reason = "Start with a balanced baseline.",
+        locked = false,
+        actionsTaken = 0,
+        focusActionsCompleted = 0,
+        categoriesCompleted = emptySet(),
+    )
+
+    private fun focusRecommendationFor(state: GameState): FocusRecommendation {
+        val daysUntilBill = (state.finances.nextBillDueDay - state.day).coerceAtLeast(0)
+        return when {
+            state.finances.cash < state.finances.weeklyLivingCost ||
+                (daysUntilBill <= 2 && state.finances.cash < state.finances.weeklyLivingCost + 100) ->
+                FocusRecommendation(DailyFocus.MONEY, "Bills and cash runway are the sharpest pressure today.")
+            state.stats.stress >= 70 || state.stats.energy <= 30 || state.stats.health <= 45 ->
+                FocusRecommendation(DailyFocus.RECOVERY, "Your body is carrying too much pressure.")
+            state.career.promotionReadiness >= 75 ->
+                FocusRecommendation(DailyFocus.CAREER, "Promotion is close enough to justify a focused push.")
+            state.relationships.average <= 45 || state.stats.social <= 35 ->
+                FocusRecommendation(DailyFocus.SOCIAL, "Relationships are fading into a risk.")
+            else -> FocusRecommendation(DailyFocus.BALANCED, "No single pressure dominates, so a balanced day builds momentum.")
+        }
+    }
+
+    private fun focusMatches(
+        focus: DailyFocus,
+        action: DailyActionDefinition,
+        plan: DayPlanState,
+    ): Boolean = when (focus) {
+        DailyFocus.MONEY -> action.category == ActionCategory.MONEY || "income" in action.tags
+        DailyFocus.CAREER -> action.effect.careerXpDelta > 0 ||
+            action.effect.promotionReadinessDelta > 0 ||
+            action.effect.reputationDelta > 0 ||
+            action.id in setOf("apply_jobs", "study_course", "networking")
+        DailyFocus.RECOVERY -> action.category == ActionCategory.WELLBEING
+        DailyFocus.SOCIAL -> action.category == ActionCategory.SOCIAL
+        DailyFocus.BALANCED -> action.category !in plan.categoriesCompleted
+    }
+
+    private fun focusBonusFor(state: GameState, action: DailyActionDefinition): ActionEffect {
+        if (!focusMatches(state.dayPlan.activeFocus, action, state.dayPlan)) return ActionEffect()
+        return when (state.dayPlan.activeFocus) {
+            DailyFocus.MONEY -> ActionEffect(
+                cashDelta = if (state.finances.debt <= 0 || action.category != ActionCategory.MONEY) 15 else 0,
+                debtDelta = if (state.finances.debt > 0 && action.category == ActionCategory.MONEY) -15 else 0,
+                stressDelta = if (action.category == ActionCategory.WORK) 2 else 0,
+            )
+            DailyFocus.CAREER -> ActionEffect(
+                careerXpDelta = 4,
+                promotionReadinessDelta = 4,
+                stressDelta = 2,
+            )
+            DailyFocus.RECOVERY -> ActionEffect(
+                healthDelta = 3,
+                moodDelta = 4,
+                stressDelta = -5,
+            )
+            DailyFocus.SOCIAL -> ActionEffect(
+                moodDelta = 4,
+                socialDelta = 3,
+                communicationDelta = 3,
+                familyDelta = if (action.effect.familyDelta > 0) 3 else 0,
+                friendsDelta = if (action.effect.friendsDelta > 0) 3 else 0,
+                networkDelta = if (action.effect.networkDelta > 0) 3 else 0,
+            )
+            DailyFocus.BALANCED -> ActionEffect()
+        }
+    }
+
+    private fun GameState.trackActionInPlan(action: DailyActionDefinition): GameState {
+        val matchedFocus = focusMatches(dayPlan.activeFocus, action, dayPlan)
+        return copy(
+            dayPlan = dayPlan.copy(
+                locked = true,
+                actionsTaken = dayPlan.actionsTaken + 1,
+                focusActionsCompleted = dayPlan.focusActionsCompleted + if (matchedFocus) 1 else 0,
+                categoriesCompleted = dayPlan.categoriesCompleted + action.category,
+            ),
+        )
+    }
+
+    private fun applyFocusEndOfDay(state: GameState): FocusOutcome {
+        val plan = state.dayPlan
+        val completed = when (plan.activeFocus) {
+            DailyFocus.BALANCED -> plan.categoriesCompleted.size >= 3
+            else -> plan.focusActionsCompleted > 0
+        }
+
+        return when {
+            completed -> {
+                val effect = focusRewardFor(plan.activeFocus)
+                FocusOutcome(
+                    state = applyEffect(state, effect),
+                    messages = listOf("${plan.activeFocus.label} focus completed."),
+                    entries = listOf(
+                        HistoryEntry(
+                            day = state.day,
+                            title = "Daily focus completed: ${plan.activeFocus.label}",
+                            detail = "The day plan paid off with a small stability reward.",
+                            kind = HistoryKind.GOAL,
+                        ),
+                    ),
+                )
+            }
+            plan.activeFocus != DailyFocus.BALANCED -> FocusOutcome(
+                state = applyEffect(state, ActionEffect(moodDelta = -1, stressDelta = 3)),
+                messages = listOf("${plan.activeFocus.label} focus was missed."),
+                entries = listOf(
+                    HistoryEntry(
+                        day = state.day,
+                        title = "Daily focus missed: ${plan.activeFocus.label}",
+                        detail = "A little pressure carried into the next morning.",
+                        kind = HistoryKind.EVENT,
+                    ),
+                ),
+            )
+            else -> FocusOutcome(state = state)
+        }
+    }
+
+    private fun focusRewardFor(focus: DailyFocus): ActionEffect = when (focus) {
+        DailyFocus.MONEY -> ActionEffect(cashDelta = 25, stressDelta = -3, creditScoreDelta = 2)
+        DailyFocus.CAREER -> ActionEffect(promotionReadinessDelta = 5, reputationDelta = 2, moodDelta = 2)
+        DailyFocus.RECOVERY -> ActionEffect(healthDelta = 4, moodDelta = 3, stressDelta = -7)
+        DailyFocus.SOCIAL -> ActionEffect(moodDelta = 4, stressDelta = -3, communicationDelta = 2)
+        DailyFocus.BALANCED -> ActionEffect(moodDelta = 4, stressDelta = -4, healthDelta = 2)
+    }
+
+    private fun quickActionIdsFor(state: GameState): List<String> = buildList {
+        state.timedOpportunities.forEach { addAll(recommendedActionIdsForOpportunity(it.id)) }
+        when (state.dayPlan.activeFocus) {
+            DailyFocus.MONEY -> addAll(listOf("budget_review", "work_shift", "freelance_gig"))
+            DailyFocus.CAREER -> addAll(listOf("apply_jobs", "study_course", "networking", "manager_check_in"))
+            DailyFocus.RECOVERY -> addAll(listOf("rest", "exercise", "cook_at_home"))
+            DailyFocus.SOCIAL -> addAll(listOf("call_family", "socialize", "networking"))
+            DailyFocus.BALANCED -> addAll(listOf("work_shift", "study_course", "exercise", "call_family"))
+        }
+        if (state.finances.cash < state.finances.weeklyLivingCost) add("work_shift")
+        if (state.finances.debt > 0) add("budget_review")
+        if (state.stats.stress >= 65 || state.stats.energy <= 35) add("rest")
+        if (state.relationships.average <= 45) add("call_family")
+    }
+        .distinct()
+        .filter { id -> availableActionsFor(state).any { it.id == id && unavailableReason(state, it) == null } }
+        .take(4)
+
+    private fun recommendationReasonFor(
+        state: GameState,
+        action: DailyActionDefinition,
+        focusMatch: Boolean,
+    ): String? {
+        val opportunity = state.timedOpportunities.firstOrNull { action.id in recommendedActionIdsForOpportunity(it.id) }
+        if (opportunity != null) return "Helps ${opportunityTitle(opportunity.id)}"
+        if (focusMatch) {
+            return if (state.dayPlan.activeFocus == DailyFocus.BALANCED) {
+                "Adds balance"
+            } else {
+                "${state.dayPlan.activeFocus.label} focus"
+            }
+        }
+        return when {
+            action.id == "work_shift" && state.finances.cash < state.finances.weeklyLivingCost -> "Covers bills"
+            action.id == "rest" && state.stats.stress >= 65 -> "Reduces burnout risk"
+            action.id == "call_family" && state.relationships.average <= 45 -> "Repairs social pressure"
+            else -> null
+        }
+    }
+
+    private fun pressureSummaryFor(state: GameState): String = when {
+        state.finances.cash < state.finances.weeklyLivingCost -> "Cash is below the next bill; money actions matter today."
+        state.stats.stress >= 75 -> "Stress is in burnout range; recovery is urgent."
+        state.finances.debt > 0 && (state.finances.nextBillDueDay - state.day).coerceAtLeast(0) <= 2 ->
+            "Bills and debt are stacking pressure."
+        state.career.promotionReadiness >= 80 -> "Promotion is close; career actions can finish the push."
+        state.relationships.average <= 40 -> "Relationships are fading; social actions can stabilize mood."
+        else -> "No single crisis dominates; follow the plan to build momentum."
+    }
+
+    private fun maybeGenerateOpportunity(state: GameState): NewDayResult {
+        if (state.timedOpportunities.size >= MAX_ACTIVE_OPPORTUNITIES) return NewDayResult(state = state)
+        val activeIds = state.timedOpportunities.map { it.id }.toSet()
+        val candidateId = OPPORTUNITY_PRIORITY.firstOrNull { id ->
+            id !in activeIds &&
+                state.day > (state.opportunityCooldowns[id] ?: 0) &&
+                shouldOfferOpportunity(id, state)
+        } ?: return NewDayResult(state = state)
+
+        val opportunity = createOpportunity(candidateId, state)
+        return NewDayResult(
+            state = state.copy(timedOpportunities = state.timedOpportunities + opportunity),
+            newOpportunityTitle = opportunityTitle(candidateId),
+        )
+    }
+
+    private fun shouldOfferOpportunity(id: String, state: GameState): Boolean {
+        val daysUntilBill = (state.finances.nextBillDueDay - state.day).coerceAtLeast(0)
+        return when (id) {
+            BILL_BUFFER_ID -> state.finances.cash < state.finances.weeklyLivingCost + 100 && daysUntilBill <= 4
+            RECOVERY_WINDOW_ID -> state.stats.stress >= 65 || state.stats.energy <= 35 || state.stats.health <= 50
+            PROMOTION_PUSH_ID -> state.career.promotionReadiness in 70..99
+            RECONNECT_ID -> state.relationships.average <= 50 || state.stats.social <= 40
+            DEBT_BRAKE_ID -> state.finances.debt >= 90
+            else -> false
+        }
+    }
+
+    private fun createOpportunity(id: String, state: GameState): TimedOpportunityState = when (id) {
+        BILL_BUFFER_ID -> TimedOpportunityState(
+            id = id,
+            progress = state.finances.cash.coerceAtMost(state.finances.weeklyLivingCost + 100),
+            target = state.finances.weeklyLivingCost + 100,
+            baseline = state.finances.cash,
+            expiresOnDay = state.day + 3,
+        )
+        RECOVERY_WINDOW_ID -> TimedOpportunityState(
+            id = id,
+            progress = 0,
+            target = (state.stats.stress - 50).coerceAtLeast(1),
+            baseline = state.stats.stress,
+            expiresOnDay = state.day + 2,
+        )
+        PROMOTION_PUSH_ID -> TimedOpportunityState(
+            id = id,
+            progress = state.career.promotionReadiness.coerceAtMost(100),
+            target = 100,
+            baseline = state.career.promotionReadiness,
+            expiresOnDay = state.day + 3,
+        )
+        RECONNECT_ID -> TimedOpportunityState(
+            id = id,
+            progress = 0,
+            target = 2,
+            baseline = state.relationships.average,
+            expiresOnDay = state.day + 3,
+        )
+        DEBT_BRAKE_ID -> TimedOpportunityState(
+            id = id,
+            progress = 0,
+            target = 90,
+            baseline = state.finances.debt,
+            expiresOnDay = state.day + 4,
+        )
+        else -> error("Unknown opportunity: $id")
+    }
+
+    private fun refreshOpportunityProgress(
+        state: GameState,
+        action: DailyActionDefinition?,
+    ): GameState = state.copy(
+        timedOpportunities = state.timedOpportunities.map { opportunity ->
+            when (opportunity.id) {
+                BILL_BUFFER_ID -> opportunity.copy(progress = state.finances.cash.coerceIn(0, opportunity.target))
+                RECOVERY_WINDOW_ID -> opportunity.copy(progress = (opportunity.baseline - state.stats.stress).coerceIn(0, opportunity.target))
+                PROMOTION_PUSH_ID -> opportunity.copy(progress = state.career.promotionReadiness.coerceIn(0, opportunity.target))
+                RECONNECT_ID -> {
+                    val actionProgress = if (action?.category == ActionCategory.SOCIAL) 1 else 0
+                    val progress = if (state.relationships.average >= 60) {
+                        opportunity.target
+                    } else {
+                        (opportunity.progress + actionProgress).coerceIn(0, opportunity.target)
+                    }
+                    opportunity.copy(progress = progress)
+                }
+                DEBT_BRAKE_ID -> opportunity.copy(progress = (opportunity.baseline - state.finances.debt).coerceIn(0, opportunity.target))
+                else -> opportunity
+            }
+        },
+    )
+
+    private fun resolveOpportunities(
+        state: GameState,
+        failExpired: Boolean,
+    ): OpportunityUpdate {
+        var updated = state
+        val remaining = mutableListOf<TimedOpportunityState>()
+        val messages = mutableListOf<String>()
+        val entries = mutableListOf<HistoryEntry>()
+        val cooldowns = updated.opportunityCooldowns.toMutableMap()
+
+        updated.timedOpportunities.forEach { opportunity ->
+            when {
+                opportunityIsComplete(opportunity, updated) -> {
+                    updated = applyOpportunityReward(updated, opportunity.id)
+                    cooldowns[opportunity.id] = updated.day + OPPORTUNITY_COOLDOWN_DAYS
+                    val title = opportunityTitle(opportunity.id)
+                    messages += "Opportunity completed: $title."
+                    entries += HistoryEntry(
+                        day = updated.day,
+                        title = "Opportunity completed: $title",
+                        detail = opportunityRewardText(opportunity.id),
+                        kind = HistoryKind.GOAL,
+                    )
+                }
+                failExpired && updated.day >= opportunity.expiresOnDay -> {
+                    updated = applyOpportunityFailure(updated, opportunity.id)
+                    cooldowns[opportunity.id] = updated.day + OPPORTUNITY_COOLDOWN_DAYS
+                    val title = opportunityTitle(opportunity.id)
+                    messages += "Opportunity expired: $title."
+                    entries += HistoryEntry(
+                        day = updated.day,
+                        title = "Opportunity expired: $title",
+                        detail = opportunityFailureText(opportunity.id),
+                        kind = HistoryKind.EVENT,
+                    )
+                }
+                else -> remaining += opportunity
+            }
+        }
+
+        return OpportunityUpdate(
+            state = updated.copy(
+                timedOpportunities = remaining,
+                opportunityCooldowns = cooldowns,
+            ),
+            messages = messages,
+            entries = entries,
+        )
+    }
+
+    private fun opportunityIsComplete(opportunity: TimedOpportunityState, state: GameState): Boolean = when (opportunity.id) {
+        BILL_BUFFER_ID -> state.finances.cash >= opportunity.target
+        RECOVERY_WINDOW_ID -> state.stats.stress <= 50
+        PROMOTION_PUSH_ID -> state.career.promotionReadiness >= 100
+        RECONNECT_ID -> opportunity.progress >= opportunity.target || state.relationships.average >= 60
+        DEBT_BRAKE_ID -> opportunity.progress >= opportunity.target
+        else -> opportunity.progress >= opportunity.target
+    }
+
+    private fun applyOpportunityReward(state: GameState, id: String): GameState = when (id) {
+        BILL_BUFFER_ID -> applyEffect(state, ActionEffect(stressDelta = -5, creditScoreDelta = 3, moodDelta = 3))
+        RECOVERY_WINDOW_ID -> applyEffect(state, ActionEffect(healthDelta = 4, moodDelta = 4))
+            .copy(modifiers = state.modifiers.filterNot { it.id == BURNOUT_RISK_ID })
+        PROMOTION_PUSH_ID -> applyEffect(state, ActionEffect(reputationDelta = 3, cashDelta = 50, moodDelta = 4))
+        RECONNECT_ID -> applyEffect(state, ActionEffect(moodDelta = 5, communicationDelta = 3, stressDelta = -3))
+        DEBT_BRAKE_ID -> applyEffect(state, ActionEffect(creditScoreDelta = 6, stressDelta = -5))
+        else -> state
+    }
+
+    private fun applyOpportunityFailure(state: GameState, id: String): GameState = when (id) {
+        BILL_BUFFER_ID -> applyEffect(state, ActionEffect(stressDelta = 4))
+        RECOVERY_WINDOW_ID -> if (state.stats.stress > 50 && state.modifiers.none { it.id == BURNOUT_RISK_ID }) {
+            state.copy(modifiers = state.modifiers + burnoutRiskModifier())
+        } else {
+            state
+        }
+        PROMOTION_PUSH_ID -> applyEffect(state, ActionEffect(stressDelta = 2, moodDelta = -1))
+        RECONNECT_ID -> applyEffect(state, ActionEffect(friendsDelta = -2, moodDelta = -2))
+        DEBT_BRAKE_ID -> applyEffect(state, ActionEffect(creditScoreDelta = -2, stressDelta = 3))
+        else -> state
+    }
+
+    private fun opportunityProgressPreview(state: GameState, action: DailyActionDefinition): Int =
+        state.timedOpportunities.map { opportunity ->
+            when (opportunity.id) {
+                RECONNECT_ID -> if (action.category == ActionCategory.SOCIAL && opportunity.progress < opportunity.target) 1 else 0
+                else -> 0
+            }
+        }.sum()
+
+    private fun recommendedActionIdsForOpportunity(id: String): List<String> = when (id) {
+        BILL_BUFFER_ID -> listOf("budget_review", "work_shift", "overtime", "freelance_gig", "pitch_client")
+        RECOVERY_WINDOW_ID -> listOf("rest", "exercise", "cook_at_home")
+        PROMOTION_PUSH_ID -> listOf("apply_jobs", "study_course", "networking", "manager_check_in", "exam_prep", "work_shift")
+        RECONNECT_ID -> listOf("socialize", "call_family", "networking")
+        DEBT_BRAKE_ID -> listOf("budget_review", "work_shift", "overtime", "freelance_gig")
+        else -> emptyList()
+    }
+
+    private fun opportunityTitle(id: String): String = when (id) {
+        BILL_BUFFER_ID -> "Bill Buffer"
+        RECOVERY_WINDOW_ID -> "Recovery Window"
+        PROMOTION_PUSH_ID -> "Promotion Push"
+        RECONNECT_ID -> "Reconnect"
+        DEBT_BRAKE_ID -> "Debt Brake"
+        else -> id
+    }
+
+    private fun opportunityRewardText(id: String): String = when (id) {
+        BILL_BUFFER_ID -> "The bill buffer lowers stress and improves credit confidence."
+        RECOVERY_WINDOW_ID -> "Recovery stabilizes your health and clears burnout pressure."
+        PROMOTION_PUSH_ID -> "The career push turns into reputation, cash, and mood."
+        RECONNECT_ID -> "Reconnection improves mood, communication, and stress."
+        DEBT_BRAKE_ID -> "Debt progress improves credit and relieves pressure."
+        else -> "The timed opportunity paid off."
+    }
+
+    private fun opportunityFailureText(id: String): String = when (id) {
+        BILL_BUFFER_ID -> "The bill still feels too close for comfort."
+        RECOVERY_WINDOW_ID -> "Unresolved stress keeps burnout risk alive."
+        PROMOTION_PUSH_ID -> "The missed career window adds a little pressure."
+        RECONNECT_ID -> "Letting the silence continue costs a little closeness."
+        DEBT_BRAKE_ID -> "Debt pressure keeps weighing on credit."
+        else -> "The timed opportunity slipped away."
+    }
+
+    private fun buildActionDeltas(
+        action: DailyActionDefinition,
+        effect: ActionEffect,
+        opportunityProgressDelta: Int,
+    ): List<ActionDelta> = buildList {
+        add(ActionDelta("Time", -action.timeCost))
+        val energy = effect.energyDelta - action.energyCost
+        if (energy != 0) add(ActionDelta("Energy", energy))
+        val cash = effect.cashDelta - action.moneyCost
+        if (cash != 0) add(ActionDelta("Cash", cash))
+        if (effect.debtDelta != 0) add(ActionDelta("Debt", effect.debtDelta, positiveIsGood = false))
+        if (effect.stressDelta != 0) add(ActionDelta("Stress", effect.stressDelta, positiveIsGood = false))
+        if (effect.moodDelta != 0) add(ActionDelta("Mood", effect.moodDelta))
+        if (effect.healthDelta != 0) add(ActionDelta("Health", effect.healthDelta))
+        if (effect.promotionReadinessDelta != 0) add(ActionDelta("Promotion", effect.promotionReadinessDelta))
+        if (effect.reputationDelta != 0) add(ActionDelta("Reputation", effect.reputationDelta))
+        val relationshipDelta = effect.socialDelta + effect.familyDelta + effect.friendsDelta + effect.networkDelta
+        if (relationshipDelta != 0) add(ActionDelta("Social", relationshipDelta))
+        if (opportunityProgressDelta != 0) add(ActionDelta("Quest", opportunityProgressDelta))
+    }.take(8)
+
     private fun summarizeAction(action: DailyActionDefinition, effect: ActionEffect): String {
         val gains = buildList {
             if (effect.cashDelta > 0) add("+${effect.cashDelta} cash")
@@ -581,6 +1083,44 @@ class LifeSimulationEngine(
 
     private fun List<HistoryEntry>.trimHistory(): List<HistoryEntry> = takeLast(HISTORY_LIMIT)
 
+    private fun burnoutRiskModifier(): LifeModifier = LifeModifier(
+        id = BURNOUT_RISK_ID,
+        title = "Burnout risk",
+        description = "Daily energy and mood suffer until you recover.",
+        daysRemaining = 3,
+        moodDelta = -2,
+        energyDelta = -6,
+        stressDelta = 3,
+    )
+
+    private operator fun ActionEffect.plus(other: ActionEffect): ActionEffect = ActionEffect(
+        cashDelta = cashDelta + other.cashDelta,
+        debtDelta = debtDelta + other.debtDelta,
+        creditScoreDelta = creditScoreDelta + other.creditScoreDelta,
+        healthDelta = healthDelta + other.healthDelta,
+        moodDelta = moodDelta + other.moodDelta,
+        energyDelta = energyDelta + other.energyDelta,
+        stressDelta = stressDelta + other.stressDelta,
+        socialDelta = socialDelta + other.socialDelta,
+        knowledgeDelta = knowledgeDelta + other.knowledgeDelta,
+        fitnessDelta = fitnessDelta + other.fitnessDelta,
+        careerXpDelta = careerXpDelta + other.careerXpDelta,
+        communicationDelta = communicationDelta + other.communicationDelta,
+        creativityDelta = creativityDelta + other.creativityDelta,
+        reputationDelta = reputationDelta + other.reputationDelta,
+        promotionReadinessDelta = promotionReadinessDelta + other.promotionReadinessDelta,
+        familyDelta = familyDelta + other.familyDelta,
+        friendsDelta = friendsDelta + other.friendsDelta,
+        networkDelta = networkDelta + other.networkDelta,
+        goalProgress = (goalProgress.keys + other.goalProgress.keys)
+            .associateWith { key -> (goalProgress[key] ?: 0) + (other.goalProgress[key] ?: 0) }
+            .filterValues { it != 0 },
+        modifier = other.modifier ?: modifier,
+    )
+
+    private fun ActionEffect.hasAnyImpact(): Boolean =
+        this != ActionEffect()
+
     private data class StartingPreset(
         val stats: CoreStats,
         val skills: SkillSet,
@@ -600,9 +1140,46 @@ class LifeSimulationEngine(
         val nextSeed: Long,
     )
 
+    private data class FocusRecommendation(
+        val focus: DailyFocus,
+        val reason: String,
+    )
+
+    private data class FocusOutcome(
+        val state: GameState,
+        val messages: List<String> = emptyList(),
+        val entries: List<HistoryEntry> = emptyList(),
+    )
+
+    private data class OpportunityUpdate(
+        val state: GameState,
+        val messages: List<String>,
+        val entries: List<HistoryEntry>,
+    )
+
+    private data class NewDayResult(
+        val state: GameState,
+        val newOpportunityTitle: String? = null,
+    )
+
     companion object {
         const val DAILY_TIME_BUDGET = 12
         private const val EVENT_CHANCE_PERCENT = 35
         private const val HISTORY_LIMIT = 100
+        private const val MAX_ACTIVE_OPPORTUNITIES = 2
+        private const val OPPORTUNITY_COOLDOWN_DAYS = 7
+        private const val BILL_BUFFER_ID = "bill_buffer"
+        private const val RECOVERY_WINDOW_ID = "recovery_window"
+        private const val PROMOTION_PUSH_ID = "promotion_push"
+        private const val RECONNECT_ID = "reconnect"
+        private const val DEBT_BRAKE_ID = "debt_brake"
+        private const val BURNOUT_RISK_ID = "burnout_risk"
+        private val OPPORTUNITY_PRIORITY = listOf(
+            BILL_BUFFER_ID,
+            RECOVERY_WINDOW_ID,
+            PROMOTION_PUSH_ID,
+            RECONNECT_ID,
+            DEBT_BRAKE_ID,
+        )
     }
 }

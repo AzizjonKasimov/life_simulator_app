@@ -5,4 +5,5 @@ data class SimulationResult(
     val success: Boolean,
     val messages: List<String>,
     val errorMessage: String? = null,
+    val actionDeltas: List<ActionDelta> = emptyList(),
 )
