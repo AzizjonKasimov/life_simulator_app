@@ -15,34 +15,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Assignment
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.Autorenew
-import androidx.compose.material.icons.filled.Casino
-import androidx.compose.material.icons.automirrored.filled.ShowChart
-import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.BusinessCenter
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Cake
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.MoneyOff
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.SentimentSatisfiedAlt
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -58,26 +44,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.azizjonkasimov.lifesimulator.domain.model.ActionAvailability
-import com.azizjonkasimov.lifesimulator.domain.model.ActionCategory
-import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
-import com.azizjonkasimov.lifesimulator.domain.model.DailyActionDefinition
-import com.azizjonkasimov.lifesimulator.domain.model.GameState
-import com.azizjonkasimov.lifesimulator.domain.model.HistoryKind
+import com.azizjonkasimov.lifesimulator.domain.model.LogKind
+import com.azizjonkasimov.lifesimulator.domain.model.Stat
+import com.azizjonkasimov.lifesimulator.domain.model.StatChange
 
 // ---------------------------------------------------------------------------
 // Shared visual vocabulary. Every screen builds from this small set of pieces
-// so the whole app reads with one consistent rhythm instead of many one-off
-// widgets.
+// so the whole app reads with one consistent rhythm.
 // ---------------------------------------------------------------------------
 
 internal enum class ChipTone { NEUTRAL, ACCENT, SUCCESS, WARN, DANGER }
 
-/**
- * Wrapping row with consistent gaps, used for any cluster of chips. The
- * experimental [FlowRow] is kept fully internal here so call sites never need
- * their own opt-in.
- */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ChipFlowRow(
@@ -137,7 +114,6 @@ internal fun SectionCard(
     }
 }
 
-/** Flat, rounded progress line with no extra ornamentation. */
 @Composable
 internal fun MeterLine(
     progress: Float,
@@ -166,68 +142,35 @@ internal fun MeterLine(
     }
 }
 
-/** Label + value + colored meter. The one stat row used everywhere. */
+/** Icon + label + value + colored meter. The one stat row used everywhere. */
 @Composable
 internal fun StatBar(
-    label: String,
+    stat: Stat,
     value: Int,
-    reverseGood: Boolean = false,
 ) {
     val display = value.coerceIn(0, 100)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(
+                    imageVector = statIcon(stat),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(15.dp),
+                )
+                Text(text = stat.label, style = MaterialTheme.typography.bodyMedium)
+            }
             Text(
                 text = "$display%",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        MeterLine(progress = display / 100f, color = meterColor(display, reverseGood))
-    }
-}
-
-/** Icon + label + value descriptor + meter. Used for the headline progress tracks. */
-@Composable
-internal fun ProgressTrack(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    progress: Int,
-    modifier: Modifier = Modifier,
-    accent: Color = MaterialTheme.colorScheme.primary,
-) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(20.dp),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        MeterLine(progress = progress.coerceIn(0, 100) / 100f, color = accent)
+        MeterLine(progress = display / 100f, color = meterColor(display))
     }
 }
 
@@ -250,12 +193,7 @@ internal fun MetricTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = accent,
-                modifier = Modifier.size(20.dp),
-            )
+            Icon(imageVector = icon, contentDescription = label, tint = accent, modifier = Modifier.size(20.dp))
             Column {
                 Text(
                     text = label,
@@ -276,7 +214,6 @@ internal fun MetricTile(
     }
 }
 
-/** Muted label over a bold value, with no surface. For dense grids inside cards. */
 @Composable
 internal fun MiniStat(
     label: String,
@@ -301,7 +238,6 @@ internal fun MiniStat(
     }
 }
 
-/** The one chip style, in a few tones. Replaces the old Pill + IconBadge pair. */
 @Composable
 internal fun LabelChip(
     text: String,
@@ -340,12 +276,7 @@ internal fun LabelChip(
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = content,
-                    modifier = Modifier.size(13.dp),
-                )
+                Icon(imageVector = icon, contentDescription = null, tint = content, modifier = Modifier.size(13.dp))
             }
             Text(
                 text = text,
@@ -360,21 +291,22 @@ internal fun LabelChip(
 
 /** Signed effect chip, green for good and red for bad. */
 @Composable
-internal fun DeltaChip(delta: ActionDelta) {
-    val isGood = if (delta.positiveIsGood) delta.amount > 0 else delta.amount < 0
+internal fun StatChangeChip(change: StatChange) {
+    val isGood = if (change.positiveIsGood) change.amount > 0 else change.amount < 0
     val container = when {
-        delta.amount == 0 -> MaterialTheme.colorScheme.surfaceVariant
+        change.amount == 0 -> MaterialTheme.colorScheme.surfaceVariant
         isGood -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.16f)
         else -> MaterialTheme.colorScheme.error.copy(alpha = 0.16f)
     }
     val content = when {
-        delta.amount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
+        change.amount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
         isGood -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.error
     }
+    val valueText = if (change.label == "Money") signedMoney(change.amount) else signed(change.amount)
     Surface(color = container, shape = MaterialTheme.shapes.small) {
         Text(
-            text = "${delta.label} ${signed(delta.amount)}",
+            text = "${change.label} $valueText",
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
             color = content,
@@ -384,7 +316,6 @@ internal fun DeltaChip(delta: ActionDelta) {
     }
 }
 
-/** Square accent tile that frames an icon. Used for identity + action glyphs. */
 @Composable
 internal fun IconBadgeTile(
     icon: ImageVector,
@@ -411,134 +342,59 @@ internal fun IconBadgeTile(
 // Formatting + color helpers
 // ---------------------------------------------------------------------------
 
-internal fun money(value: Int): String =
-    if (value < 0) "-${money(-value)}" else "\$$value"
+internal fun money(value: Int): String = if (value < 0) "-\$${-value}" else "\$$value"
 
 internal fun signed(value: Int): String = if (value > 0) "+$value" else value.toString()
 
+internal fun signedMoney(value: Int): String = if (value > 0) "+${money(value)}" else money(value)
+
 @Composable
-internal fun meterColor(
-    value: Int,
-    reverseGood: Boolean = false,
-): Color {
-    val stressValue = if (reverseGood) value else 100 - value
+internal fun meterColor(value: Int): Color {
+    val deficit = 100 - value
     return when {
-        stressValue >= 72 -> MaterialTheme.colorScheme.error
-        stressValue >= 45 -> MaterialTheme.colorScheme.tertiary
+        deficit >= 72 -> MaterialTheme.colorScheme.error
+        deficit >= 45 -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.primary
     }
 }
-
-internal fun costText(action: DailyActionDefinition): String =
-    "${action.timeCost}h · ${action.energyCost} energy" +
-        if (action.moneyCost > 0) " · ${money(action.moneyCost)}" else ""
-
-/** Tighter cost string for dense rows on narrow screens: "5h · 28e · $30". */
-internal fun compactCostText(action: DailyActionDefinition): String =
-    "${action.timeCost}h · ${action.energyCost}e" +
-        if (action.moneyCost > 0) " · ${money(action.moneyCost)}" else ""
-
-internal fun runwayDays(state: GameState, weeklyCost: Int): Int =
-    if (weeklyCost <= 0) 0 else (state.finances.cash * 7 / weeklyCost).coerceAtLeast(0)
 
 // ---------------------------------------------------------------------------
 // Icon mapping
 // ---------------------------------------------------------------------------
 
+internal fun statIcon(stat: Stat): ImageVector = when (stat) {
+    Stat.HAPPINESS -> Icons.Filled.SentimentSatisfiedAlt
+    Stat.HEALTH -> Icons.Filled.Favorite
+    Stat.SMARTS -> Icons.Filled.School
+    Stat.LOOKS -> Icons.Filled.Face
+}
+
+internal fun logIcon(kind: LogKind): ImageVector = when (kind) {
+    LogKind.MILESTONE -> Icons.Filled.Star
+    LogKind.MONEY -> Icons.Filled.AttachMoney
+    LogKind.HEALTH -> Icons.Filled.Favorite
+    LogKind.RELATIONSHIP -> Icons.Filled.Groups
+    LogKind.SCHOOL -> Icons.Filled.School
+    LogKind.WORK -> Icons.Filled.Work
+    LogKind.EVENT -> Icons.Filled.AutoAwesome
+    LogKind.NEUTRAL -> Icons.Filled.ChevronRight
+}
+
 internal fun GameTab.icon(): ImageVector = when (this) {
-    GameTab.DASHBOARD -> Icons.Filled.Dashboard
-    GameTab.ACTIONS -> Icons.AutoMirrored.Filled.FormatListBulleted
-    GameTab.MONEY -> Icons.Filled.AccountBalanceWallet
-    GameTab.PROGRESS -> Icons.Filled.BarChart
-    GameTab.HISTORY -> Icons.Filled.History
+    GameTab.LIFE -> Icons.Filled.Timeline
+    GameTab.ACTIVITIES -> Icons.Filled.SelfImprovement
+    GameTab.PEOPLE -> Icons.Filled.Groups
+    GameTab.PROFILE -> Icons.Filled.AccountCircle
 }
 
-internal fun statusIcon(state: GameState): ImageVector = when {
-    !state.career.employed -> Icons.Filled.Search
-    state.business.started && state.business.clients > 0 -> Icons.Filled.BusinessCenter
-    state.stats.stress >= 75 -> Icons.Filled.Warning
-    state.career.promotionReadiness >= 75 -> Icons.AutoMirrored.Filled.TrendingUp
-    else -> Icons.Filled.Person
-}
-
-internal fun actionIcon(action: DailyActionDefinition): ImageVector = when (action.id) {
-    "gig_work",
-    "work_shift",
-    "overtime" -> Icons.Filled.AttachMoney
-    "apply_jobs" -> Icons.AutoMirrored.Filled.Assignment
-    "interview_prep",
-    "study" -> Icons.Filled.School
-    "attend_interview" -> Icons.Filled.Work
-    "manager_check_in",
-    "network" -> Icons.AutoMirrored.Filled.TrendingUp
-    "launch_business",
-    "find_client",
-    "marketing",
-    "upgrade_business" -> Icons.Filled.BusinessCenter
-    "exercise" -> Icons.Filled.FitnessCenter
-    "rest" -> Icons.Filled.Favorite
-    "cook_at_home" -> Icons.Filled.Restaurant
-    "socialize" -> Icons.Filled.Groups
-    "call_family" -> Icons.Filled.Call
-    else -> when (action.category) {
-        ActionCategory.WORK -> Icons.Filled.Work
-        ActionCategory.GROWTH -> Icons.Filled.School
-        ActionCategory.WELLBEING -> Icons.Filled.Favorite
-        ActionCategory.SOCIAL -> Icons.Filled.Groups
-        ActionCategory.MONEY -> Icons.Filled.AttachMoney
-        ActionCategory.BUSINESS -> Icons.Filled.BusinessCenter
-    }
-}
-
-internal fun HistoryKind.label(): String = when (this) {
-    HistoryKind.ACTION -> "Action"
-    HistoryKind.CAREER -> "Career"
-    HistoryKind.DAY -> "Day"
-    HistoryKind.EVENT -> "Event"
-    HistoryKind.FINANCE -> "Finance"
-    HistoryKind.GOAL -> "Opportunity"
-    HistoryKind.RELATIONSHIP -> "Social"
-    HistoryKind.SYSTEM -> "System"
-}
-
-internal fun recommendationTone(availability: ActionAvailability): ChipTone = when {
-    availability.recommendationReason?.contains("opportunity", ignoreCase = true) == true -> ChipTone.WARN
-    availability.focusMatch -> ChipTone.ACCENT
-    availability.recommendationReason != null -> ChipTone.WARN
-    else -> ChipTone.NEUTRAL
-}
-
-internal fun recommendationIcon(availability: ActionAvailability): ImageVector = when {
-    availability.recommendationReason?.contains("opportunity", ignoreCase = true) == true -> Icons.Filled.Event
-    availability.focusMatch -> Icons.AutoMirrored.Filled.TrendingUp
-    availability.recommendationReason != null -> Icons.Filled.Warning
-    else -> actionIcon(availability.action)
-}
-
-// Re-exported icons referenced by name from the screen files.
 internal object UiIcons {
-    val cash = Icons.Filled.AttachMoney
-    val debt = Icons.Filled.MoneyOff
-    val time = Icons.Filled.AccessTime
-    val energy = Icons.Filled.Bolt
-    val bill = Icons.Filled.Event
-    val runway = Icons.Filled.CreditCard
-    val pressure = Icons.Filled.Warning
-    val business = Icons.Filled.BusinessCenter
-    val career = Icons.Filled.Work
-    val jobSearch = Icons.Filled.Search
+    val happiness = Icons.Filled.SentimentSatisfiedAlt
+    val health = Icons.Filled.Favorite
+    val smarts = Icons.Filled.School
+    val looks = Icons.Filled.Face
     val money = Icons.Filled.AttachMoney
-    val netWorth = Icons.Filled.AccountBalanceWallet
-    val savings = Icons.Filled.Savings
-    val autoSave = Icons.Filled.Autorenew
-    val invest = Icons.AutoMirrored.Filled.ShowChart
-    val shop = Icons.Filled.ShoppingCart
-    val decision = Icons.Filled.Casino
-    val recover = Icons.Filled.Favorite
-    val connect = Icons.Filled.Groups
-    val skills = Icons.Filled.School
-    val finances = Icons.Filled.CreditCard
-    val wellbeing = Icons.Filled.Favorite
-    val relationships = Icons.Filled.Groups
-    val updates = Icons.AutoMirrored.Filled.TrendingUp
+    val age = Icons.Filled.Cake
+    val person = Icons.Filled.Person
+    val people = Icons.Filled.Groups
+    val work = Icons.Filled.Work
 }

@@ -1,60 +1,35 @@
 package com.azizjonkasimov.lifesimulator.data
 
 import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
-import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
-import org.json.JSONObject
+import com.azizjonkasimov.lifesimulator.domain.model.Gender
+import com.azizjonkasimov.lifesimulator.domain.model.Job
+import com.azizjonkasimov.lifesimulator.domain.model.JobField
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GameStateJsonCodecTest {
-    @Test
-    fun gameStateRoundTripsThroughJson() {
-        val state = LifeSimulationEngine().startNewLife()
-        val encoded = GameStateJsonCodec.encode(state)
-        val decoded = GameStateJsonCodec.decode(encoded)
+    private val engine = LifeSimulationEngine()
 
-        assertFalse(encoded.contains("\"goals\""))
+    @Test
+    fun roundTrip_preservesAFreshLife() {
+        val state = engine.ageUp(engine.startNewLife("Round Trip", Gender.FEMALE)).state
+        val decoded = GameStateJsonCodec.decode(GameStateJsonCodec.encode(state))
         assertEquals(state, decoded)
     }
 
     @Test
-    fun legacyEconomyJsonDecodesWithAutoAllocationDefaults() {
-        // A save written before v0.8.0 has no auto-allocation fields; it must still load (no wipe).
-        val state = LifeSimulationEngine().startNewLife()
-        val root = JSONObject(GameStateJsonCodec.encode(state))
-        val economy = root.getJSONObject("economy")
-        listOf("autoSavePercent", "autoInvestPercent", "autoInvestType", "lifetimeInterest").forEach { economy.remove(it) }
-
-        val decoded = GameStateJsonCodec.decode(root.toString())
-
-        assertEquals(0, decoded.economy.autoSavePercent)
-        assertEquals(0, decoded.economy.autoInvestPercent)
-        assertEquals(InvestmentType.INDEX, decoded.economy.autoInvestType)
-        assertEquals(0, decoded.economy.lifetimeInterest)
-    }
-
-    @Test
-    fun legacyFinanceAndGoalsDecodeWithDefaults() {
-        // A save written before v0.9.0 has no gigsThisWeek or completedGoals; it must still load (no wipe).
-        val state = LifeSimulationEngine().startNewLife()
-        val root = JSONObject(GameStateJsonCodec.encode(state))
-        root.getJSONObject("finances").remove("gigsThisWeek")
-        root.remove("completedGoals")
-
-        val decoded = GameStateJsonCodec.decode(root.toString())
-
-        assertEquals(0, decoded.finances.gigsThisWeek)
-        assertTrue(decoded.completedGoals.isEmpty())
-    }
-
-    @Test
-    fun entityUsesCurrentSchemaVersion() {
-        val state = LifeSimulationEngine().startNewLife()
-        val entity = state.toEntity()
-
-        assertEquals(GameStateJsonCodec.SCHEMA_VERSION, entity.schemaVersion)
-        assertEquals(state, entity.toDomain())
+    fun roundTrip_preservesJobFlagsAndDeath() {
+        val base = engine.startNewLife("Worker", Gender.MALE)
+        val state = base.copy(
+            job = Job("clerk", "Office Clerk", JobField.OFFICE, salaryPerYear = 34000),
+            flags = setOf("hs_grad", "homeowner"),
+            eventsSeen = setOf("buy_house"),
+            pendingEventIds = listOf("free_time"),
+            activitiesUsed = setOf("gym"),
+            alive = false,
+            causeOfDeath = "old age",
+        )
+        val decoded = GameStateJsonCodec.decode(GameStateJsonCodec.encode(state))
+        assertEquals(state, decoded)
     }
 }

@@ -8,11 +8,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.azizjonkasimov.lifesimulator.data.SaveRepository
 import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
-import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
-import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
-import com.azizjonkasimov.lifesimulator.domain.model.PassiveIncomeBreakdown
+import com.azizjonkasimov.lifesimulator.domain.model.Gender
 import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
+import com.azizjonkasimov.lifesimulator.domain.model.StatChange
 import kotlinx.coroutines.launch
 
 class LifeSimulatorViewModel(
@@ -24,7 +23,7 @@ class LifeSimulatorViewModel(
 
     private var currentGameState: GameState? = null
     private var messages: List<String> = emptyList()
-    private var lastActionDeltas: List<ActionDelta> = emptyList()
+    private var statChanges: List<StatChange> = emptyList()
 
     init {
         viewModelScope.launch {
@@ -35,61 +34,47 @@ class LifeSimulatorViewModel(
         }
     }
 
-    fun startNewLife() {
+    fun startNewLife(name: String, gender: Gender) {
         viewModelScope.launch {
-            val gameState = engine.startNewLife()
-            messages = listOf("A fresh start.")
-            lastActionDeltas = emptyList()
+            val gameState = engine.startNewLife(name, gender)
+            messages = listOf("A new life begins.")
+            statChanges = emptyList()
             repository.saveGameState(gameState)
         }
     }
 
-    fun performAction(actionId: String) {
-        dispatch(deltasFromResult = true) { engine.performAction(it, actionId) }
-    }
+    fun ageUp() = dispatch { engine.ageUp(it) }
 
-    fun advanceDay() {
-        dispatch { engine.advanceDay(it) }
-    }
+    fun resolveEvent(eventId: String, choiceIndex: Int) =
+        dispatch { engine.resolveEvent(it, eventId, choiceIndex) }
 
-    fun deposit(amount: Int) = dispatch { engine.deposit(it, amount) }
-    fun withdraw(amount: Int) = dispatch { engine.withdraw(it, amount) }
-    fun payDebt(amount: Int) = dispatch { engine.payDebt(it, amount) }
-    fun invest(type: InvestmentType, amount: Int) = dispatch { engine.invest(it, type, amount) }
-    fun sellInvestment(type: InvestmentType) = dispatch { engine.sellInvestment(it, type) }
-    fun buyAsset(assetId: String) = dispatch { engine.buyAsset(it, assetId) }
-    fun sellAsset(assetId: String) = dispatch { engine.sellAsset(it, assetId) }
-    fun setAutoSave(percent: Int) = dispatch { engine.setAutoSave(it, percent) }
-    fun setAutoInvest(percent: Int, type: InvestmentType) = dispatch { engine.setAutoInvest(it, percent, type) }
+    fun doActivity(activityId: String) = dispatch { engine.doActivity(it, activityId) }
+
+    fun interact(personId: String, interactionId: String) =
+        dispatch { engine.interact(it, personId, interactionId) }
 
     fun resetSave() {
         viewModelScope.launch {
             messages = emptyList()
-            lastActionDeltas = emptyList()
+            statChanges = emptyList()
             repository.resetSave()
         }
     }
 
+    fun selectTab(tab: GameTab) = rebuildState(isLoading = false, selectedTab = tab)
+
     fun showMessage(message: String) {
         messages = listOf(message)
-        lastActionDeltas = emptyList()
+        statChanges = emptyList()
         rebuildState(isLoading = false)
     }
 
-    fun selectTab(tab: GameTab) {
-        rebuildState(isLoading = false, selectedTab = tab)
-    }
-
-    /** Runs an engine operation, surfaces its messages, and persists on success. */
-    private fun dispatch(
-        deltasFromResult: Boolean = false,
-        operation: (GameState) -> SimulationResult,
-    ) {
+    private fun dispatch(operation: (GameState) -> SimulationResult) {
         val state = currentGameState ?: return
         val result = operation(state)
         viewModelScope.launch {
             messages = result.errorMessage?.let { listOf(it) } ?: result.messages
-            lastActionDeltas = if (deltasFromResult) result.actionDeltas else emptyList()
+            statChanges = result.statChanges
             if (result.success) {
                 repository.saveGameState(result.state)
             } else {
@@ -106,15 +91,11 @@ class LifeSimulatorViewModel(
         uiState = LifeSimulatorUiState(
             isLoading = isLoading,
             gameState = state,
-            actions = state?.let(engine::actionAvailability).orEmpty(),
-            dashboard = state?.let(engine::dashboardSnapshot),
-            netWorth = state?.let(engine::netWorth) ?: 0,
-            weeklyCost = state?.let(engine::weeklyLivingTotal) ?: 0,
-            passiveIncome = state?.let(engine::passiveIncome) ?: PassiveIncomeBreakdown.EMPTY,
-            goals = state?.let(engine::goalStatuses).orEmpty(),
             selectedTab = selectedTab,
+            activities = state?.let(engine::availableActivities).orEmpty(),
+            pendingEvent = state?.let(engine::pendingEvent),
             messages = messages,
-            lastActionDeltas = lastActionDeltas,
+            statChanges = statChanges,
         )
     }
 }

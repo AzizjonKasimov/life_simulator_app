@@ -1,24 +1,21 @@
 # Life Simulator App
 
-A personal Android dashboard-style life simulator game. It side-loads onto a phone as a signed APK and updates itself from GitHub Releases — not a Play Store app.
+A personal Android life simulator game in the BitLife tradition: you're born as a person, and each tap of **Age Up** lives one year of choices, events, and relationships. It side-loads onto a phone as a signed APK and updates itself from GitHub Releases — not a Play Store app.
 
 ## Status
 
-v0.9.2. You start broke and in debt, and the goal is to grow your **net worth** — the always-visible score — toward **Financial Independence**, where passive income covers your weekly bill. Earn money from gigs, a steady job, and a side business, then save it, invest it, pay down debt, and buy life-changing assets. Interviews, client wins, market swings, and client churn are seeded gambles, so outcomes are uncertain but a given save replays identically.
+**M1 (thin playable slice) of a BitLife-style rebuild.** You're born somewhere in the real world with four core stats — Happiness, Health, Smarts, Looks — and each **Age Up** lives one year: your stats drift, seeded life events happen and ask you to choose, and you can spend the year on activities or time with the people in your life. Education milestones, a light job layer, money, and family all play out year by year until you die and get a legacy summary. Every gamble is seeded, so a given life replays identically.
 
-Recent passes:
+> This replaces the v0.1–v0.9 **finance** simulator (grow-your-net-worth), which lives on in git history and the released `0.9.x` APKs. The full design for the life sim — systems, content plan, and roadmap — is in [docs/DESIGN.md](docs/DESIGN.md).
 
-- **v0.7.0** reinvented the core loop around a real economy (savings, investments, assets, net worth as the score) and visible risk/luck — and retired the old daily-focus autopilot and timed-opportunity systems that made it play itself.
-- **v0.8.0** is a legibility + UX pass: savings interest is now shown (lifetime earned + next-payday projection), an opt-in **Auto-Save & Invest** sweeps a chosen share of spare cash into savings/investments each payday, and the Actions tab gained category filters over compact, scannable rows.
-- **v0.9.0** is a depth + goals pass: gig pay now diminishes with weekly use and the cost of living rises over time (real early pressure); a business must be *run*, not just built (clients churn and reputation decays each week), with a new top **Firm** tier; big-ticket money sinks arrive (buy your home, income-producing rentals and a franchise, a salary-boosting degree); and an eleven-rung **goal ladder** — ending in Financial Independence — plus a passive-income tracker give the open economy a spine of things to chase.
-- **v0.9.1–v0.9.2** trimmed to taste: removed the header status label and the random decision pop-ups. Passive flavor events (a good night's sleep, a stress spike) stay.
+M1 includes: character creation, the year-based Age Up loop, ~50 authored events across life stages, parents and siblings you can interact with, a handful of activities, a light job/education layer, death, and a legacy screen. M2 (breadth: university, careers with promotions, romance → marriage → children, ~120 events) and M3 (depth: health/illness, crime, assets, 200+ events) are laid out in the design doc.
 
 ## Product Direction
 
-- Playable dashboard-first life simulation; net worth is the throughline.
-- Phone-friendly surfaces for money, career, business, wellbeing, relationships, daily actions, and history.
+- A text-driven, year-at-a-time life simulation; the life story is the throughline.
+- Phone-friendly surfaces: your life feed, activities, the people in your life, and a profile.
 - Local-first gameplay with no backend, accounts, telemetry, or Play Store release plumbing until explicitly needed.
-- Keep it legible and player-driven: few meters at a time, money always has something to do, and the game never auto-plays the optimal move.
+- Keep it legible and player-driven: the game presents choices and never plays the optimal move for you.
 
 ## Stack
 
@@ -46,7 +43,7 @@ Signed release builds copy the install APK into the repo root:
 
 After a signed release build, use `LifeSimulator-latest.apk` from the root folder for phone installation. A versioned copy such as `LifeSimulator-0.9.0.apk` is kept there too.
 
-Saves use Room database version `5` and JSON schema version `5`, stored as `schemaVersion + stateJson` so simulator systems can evolve without frequent table rewrites. The v0.7.0 reinvention reset pre-0.7 saves (schema `4` → `5`); since then, new fields are added backward-compatibly, so existing saves carry across updates. A save whose schema doesn't match — or fails to decode — is treated as "no save" and the app starts a fresh life instead of crashing.
+Saves use Room database version `5` and JSON schema version `6`, stored as `schemaVersion + stateJson` so simulator systems can evolve without frequent table rewrites. The BitLife-style rebuild bumped the schema (`5` → `6`); because a save whose schema doesn't match — or fails to decode — is treated as "no save," any old finance save is retired cleanly and the app starts a fresh life instead of crashing. Within the life sim, new fields are added backward-compatibly so existing saves carry across updates.
 
 ## App Updates
 
@@ -68,28 +65,32 @@ Release signing uses local, gitignored files:
 Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish a release with:
 
 ```powershell
-.\release.ps1 -VersionName 0.9.0 -VersionCode 9 -Notes "Depth and goals: diminishing gigs, rising costs, a business you must run, big-ticket money sinks, and a goal ladder to Financial Independence."
+.\release.ps1 -VersionName 0.10.0 -VersionCode 10 -Notes "BitLife-style rebuild (M1): born, Age Up through a life of seeded events and choices, relationships, death, and a legacy screen."
 ```
 
 The script bumps the version, builds a signed APK, publishes `LifeSimulator-<version>.apk` to `AzizjonKasimov/life-simulator-app-releases`, and updates `version.json` for the in-app updater. The version bump in this repo is left uncommitted for review.
 
 ## Game Loop
 
-Start as Alex Rivers, a 22-year-old who's unemployed, with $180 in cash, $350 in debt, and a weekly living bill due every seven days. Net worth — cash + savings + investments + asset resale − debt — starts negative, and growing it is the game.
+You're born as a baby — a random name (or one you choose), a gender, a birthplace, four core stats, and a starting family. There's no score to maximize; the *story* is the point.
 
-Each day gives a limited time and energy budget to spend on actions across making money, career, business, wellbeing, and relationships. Gig work is a survival tool that pays less the more you lean on it in a week, so it can't replace real income. Ending the day settles the week whenever a bill is due: business income lands (and clients may churn), property income pays out, savings earn interest, investments swing, the living bill is paid (or rolls into debt), and any opt-in auto-allocation sweeps spare cash into savings or investments. Roughly monthly the cost of living creeps up, so a fixed income can't coast. The night may then roll a small passive event that nudges your stats.
+Each **Age Up** advances one year: stats drift with age (health and looks fade later in life; the young grow into themselves), any salary is paid, education milestones land, the people in your life age (and can pass away), a death check runs, and one to three **seeded life events** fire. Flavour events simply happen; real decisions pop up and ask you to choose, with consequences that ripple through the rest of the life. Between years you can spend the year on **activities** or with **people**.
 
-**Money (the Money tab).** Park cash in savings for steady weekly interest (with the lifetime total and next payday shown), invest in Index funds, Stocks, or Crypto — each with its own seeded weekly swing — pay down debt, and buy assets that change how the rest of the game plays: a car (better gig pay), a nicer apartment, a gym, a laptop, a therapist, insurance, or a getaway. Bigger buys anchor the late game: a **home** that ends rent, income-producing **rentals** and a **franchise**, and a **degree** that permanently lifts your salary. A **Passive Income** tracker shows what arrives each week without spending a day on it, measured against your bill — the yardstick for Financial Independence. **Auto-Save & Invest** moves a set percentage of each payday's leftover cash automatically, so you don't have to allocate by hand.
+**Stats.** Happiness, Health, Smarts, and Looks (0–100) are pushed by events, activities, and age. If Health hits zero, the life ends.
 
-**Career.** While unemployed, applying and prepping build a single job-search bar; once it's high enough, attending an interview is a seeded, skill-weighted gamble with visible odds — a hire, a callback, or a rejection. Once employed, shifts, check-ins, and study fill a promotion bar that delivers titled, better-paid level-ups.
+**Life stages.** Infant → Child → Teen → Young Adult → Adult → Senior gate which events can fire and what you can do — from playground scrapes and school dances to careers, houses, and grandchildren.
 
-**Business.** Launch a side hustle and grow it as a legible income engine, but keep tending it: sign clients (a seeded chance improved by reputation), run marketing, and reinvest to upgrade tiers (Side Hustle → Studio → Agency → Firm) for more clients and higher rates. Each week pays clients × rate scaled by reputation, minus overhead — and each week reputation slips and clients can churn, so a business you stop working slowly shrinks.
+**People.** Parents and siblings to start; each is a real person with a name, an age, and a relationship meter you can raise by spending time together. (More relationship types — friends, partners, children — arrive in M2.)
 
-**Risk & luck.** The gambles that matter are seeded: interviews, client wins, client churn, and investment weeks all flow from one save seed, so risk is fair and a given save replays identically.
+**Work & school.** School and graduation happen on their own; from 16+ you can look for a job (a seeded, smarts-weighted hire) that pays a yearly salary.
 
-**Goals & Financial Independence.** A named goal ladder runs from breaking even and going debt-free through becoming a landlord and a homeowner to six figures, ending in Financial Independence — the week your passive income covers your bill. Goals only track and celebrate; they never play for you.
+**Money.** A light layer for now — salary in, event and activity costs out. It's one system among many, not the scoreboard.
 
-**Surfaces.** Five tabs: **Home** (status, cash flow with passive income, your next goal, career and business at a glance, what to do next, and the recent log), **Actions** (category filters over compact action rows), **Money**, **Stats** (the full goal checklist plus career, business, money, wellbeing, relationships, skills, and app updates), and **History**.
+**Risk & luck.** Event selection, job hunts, and mortality all flow from one save seed, so a given life replays identically.
+
+**Death & legacy.** Every life ends — by age, health, or misfortune — with a legacy screen recapping your years, final stats, wealth, and notable moments, then the option to start a new life.
+
+**Surfaces.** Four tabs: **Life** (your stats, the Age Up button, and the life-story feed), **Activities**, **People**, and **Profile** (character details, stats, and app updates).
 
 ## License
 
