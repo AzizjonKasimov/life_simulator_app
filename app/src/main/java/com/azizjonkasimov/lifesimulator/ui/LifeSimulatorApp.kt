@@ -145,7 +145,6 @@ private fun ActiveGameScreen(
         ) {
             AppHeader(
                 state = state,
-                status = dashboard.status,
                 netWorth = uiState.netWorth,
                 messages = uiState.messages,
                 lastActionDeltas = uiState.lastActionDeltas,
@@ -202,7 +201,6 @@ private fun ActiveGameScreen(
 @Composable
 private fun AppHeader(
     state: GameState,
-    status: String,
     netWorth: Int,
     messages: List<String>,
     lastActionDeltas: List<ActionDelta>,
@@ -235,18 +233,12 @@ private fun AppHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                LabelChip(text = status, tone = ChipTone.ACCENT)
-                Text(
-                    text = "Net ${money(netWorth)}",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = if (netWorth >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
-                )
-            }
+            Text(
+                text = "Net ${money(netWorth)}",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (netWorth >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

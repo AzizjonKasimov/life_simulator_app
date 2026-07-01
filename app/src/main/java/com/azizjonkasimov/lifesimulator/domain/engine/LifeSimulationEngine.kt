@@ -153,7 +153,6 @@ class LifeSimulationEngine(
             if (state.business.started && state.business.clients == 0) add("Your business has no clients yet.")
         }.take(3)
         return DashboardSnapshot(
-            status = statusFor(state),
             netWorth = netWorth(state),
             weeklyCost = weeklyCost,
             businessWeeklyNet = businessWeeklyNet(state),
@@ -847,20 +846,6 @@ class LifeSimulationEngine(
     // -----------------------------------------------------------------------
     // Presentation helpers
     // -----------------------------------------------------------------------
-
-    private fun statusFor(state: GameState): String = when {
-        !state.career.employed && state.finances.cash < weeklyLivingTotal(state) -> "Scraping by"
-        state.finances.debt >= 700 -> "Debt pressure"
-        state.stats.health <= 35 -> "Fragile"
-        state.stats.stress >= 82 -> "Burnout risk"
-        passiveIncome(state).total.let { it > 0 && it >= weeklyLivingTotal(state) } -> "Financially Free"
-        netWorth(state) >= 10_000 -> "Wealthy"
-        netWorth(state) >= 3_000 -> "Comfortable"
-        state.career.employed && state.career.promotionReadiness >= 80 -> "Breakthrough close"
-        state.business.tier >= BusinessTier.STUDIO -> "Business growing"
-        netWorth(state) >= 0 -> "Stable"
-        else -> "In the red"
-    }
 
     private fun pressureSummaryFor(state: GameState): String {
         val weekly = weeklyLivingTotal(state)

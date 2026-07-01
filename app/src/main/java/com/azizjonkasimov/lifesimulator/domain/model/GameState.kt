@@ -151,7 +151,6 @@ data class LifeModifier(
 
 /** Light, computed overview for the dashboard. Presentation specifics are read from state. */
 data class DashboardSnapshot(
-    val status: String,
     val netWorth: Int,
     val weeklyCost: Int,
     val businessWeeklyNet: Int,
