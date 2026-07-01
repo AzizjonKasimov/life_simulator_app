@@ -23,11 +23,14 @@ import com.azizjonkasimov.lifesimulator.domain.engine.AssetCatalog
 import com.azizjonkasimov.lifesimulator.domain.model.AssetDefinition
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
+import com.azizjonkasimov.lifesimulator.domain.model.PassiveIncomeBreakdown
 
 @Composable
 internal fun MoneyScreen(
     state: GameState,
     netWorth: Int,
+    passiveIncome: PassiveIncomeBreakdown,
+    weeklyCost: Int,
     onDeposit: (Int) -> Unit,
     onWithdraw: (Int) -> Unit,
     onPayDebt: (Int) -> Unit,
@@ -45,6 +48,7 @@ internal fun MoneyScreen(
         modifier = Modifier.fillMaxSize(),
     ) {
         item { NetWorthCard(state = state, netWorth = netWorth) }
+        item { PassiveIncomeCard(passive = passiveIncome, weeklyCost = weeklyCost) }
         item { SavingsCard(state = state, onDeposit = onDeposit, onWithdraw = onWithdraw) }
         item { AutoAllocationCard(state = state, cash = cash, onSetAutoSave = onSetAutoSave, onSetAutoInvest = onSetAutoInvest) }
         if (state.finances.debt > 0) {
@@ -74,6 +78,57 @@ private fun NetWorthCard(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MiniStat(label = "Invested", value = money(state.economy.investedValue), modifier = Modifier.weight(1f))
             MiniStat(label = "Debt", value = money(state.finances.debt), modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun PassiveIncomeCard(
+    passive: PassiveIncomeBreakdown,
+    weeklyCost: Int,
+) {
+    val total = passive.total
+    val coversPercent = if (weeklyCost > 0) (total * 100 / weeklyCost) else 0
+    val free = total > 0 && total >= weeklyCost
+    val accent = if (free) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+    SectionCard(
+        title = "Passive Income",
+        icon = UiIcons.invest,
+        trailing = {
+            Text(
+                text = "${money(total)}/wk",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (free) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
+            )
+        },
+    ) {
+        Text(
+            text = "Money that arrives without spending a day on it. Cover your weekly bill and you're financially free.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        MeterLine(
+            progress = if (weeklyCost > 0) total.toFloat() / weeklyCost else 0f,
+            color = accent,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MiniStat(label = "Covers bill", value = "$coversPercent%", modifier = Modifier.weight(1f))
+            MiniStat(label = "Weekly bill", value = money(weeklyCost), modifier = Modifier.weight(1f))
+        }
+        val parts = listOfNotNull(
+            passive.savingsInterest.takeIf { it > 0 }?.let { "Savings ${money(it)}" },
+            passive.business.takeIf { it > 0 }?.let { "Business ${money(it)}" },
+            passive.properties.takeIf { it > 0 }?.let { "Property ${money(it)}" },
+            passive.market.takeIf { it > 0 }?.let { "Market ${money(it)}" },
+        )
+        if (parts.isNotEmpty()) {
+            ChipFlowRow {
+                parts.forEach { LabelChip(text = it, tone = ChipTone.NEUTRAL) }
+            }
+        }
+        if (free) {
+            LabelChip(text = "Financially free", icon = UiIcons.netWorth, tone = ChipTone.SUCCESS)
         }
     }
 }
@@ -253,12 +308,13 @@ private fun AssetRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val upkeep = asset.weeklyUpkeep + asset.rentDelta
-                if (upkeep > 0) {
+                // Net weekly effect: income earned minus upkeep and any rent change.
+                val weekly = asset.weeklyIncome - asset.weeklyUpkeep - asset.rentDelta
+                if (weekly != 0) {
                     Text(
-                        text = "${money(upkeep)}/week",
+                        text = if (weekly > 0) "+${money(weekly)}/week" else "${money(weekly)}/week",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
+                        color = if (weekly > 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.tertiary,
                     )
                 }
             }
@@ -268,10 +324,12 @@ private fun AssetRow(
         }
         ChipFlowRow {
             if (owned) {
-                MoneyButton(text = "Sell (${money(asset.price / 2)})", enabled = true) { onSellAsset(asset.id) }
+                if (asset.effectiveResale > 0) {
+                    MoneyButton(text = "Sell (${money(asset.effectiveResale)})", enabled = true) { onSellAsset(asset.id) }
+                }
             } else {
                 MoneyButton(
-                    text = if (asset.consumable) "Buy ${money(asset.price)}" else "Buy ${money(asset.price)}",
+                    text = "Buy ${money(asset.price)}",
                     enabled = cash >= asset.price,
                     primary = true,
                 ) { onBuyAsset(asset.id) }

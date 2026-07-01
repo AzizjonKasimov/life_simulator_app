@@ -5,6 +5,7 @@ import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GameStateJsonCodecTest {
@@ -32,6 +33,20 @@ class GameStateJsonCodecTest {
         assertEquals(0, decoded.economy.autoInvestPercent)
         assertEquals(InvestmentType.INDEX, decoded.economy.autoInvestType)
         assertEquals(0, decoded.economy.lifetimeInterest)
+    }
+
+    @Test
+    fun legacyFinanceAndGoalsDecodeWithDefaults() {
+        // A save written before v0.9.0 has no gigsThisWeek or completedGoals; it must still load (no wipe).
+        val state = LifeSimulationEngine().startNewLife()
+        val root = JSONObject(GameStateJsonCodec.encode(state))
+        root.getJSONObject("finances").remove("gigsThisWeek")
+        root.remove("completedGoals")
+
+        val decoded = GameStateJsonCodec.decode(root.toString())
+
+        assertEquals(0, decoded.finances.gigsThisWeek)
+        assertTrue(decoded.completedGoals.isEmpty())
     }
 
     @Test

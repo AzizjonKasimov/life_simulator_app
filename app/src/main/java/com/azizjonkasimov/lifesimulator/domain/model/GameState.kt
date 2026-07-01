@@ -15,6 +15,8 @@ data class GameState(
     val pendingDecision: PendingDecision?,
     val rngSeed: Long,
     val history: List<HistoryEntry>,
+    /** Ids of goals already reached and celebrated. Monotonic — a goal stays earned. */
+    val completedGoals: List<String> = emptyList(),
 ) {
     val day: Int
         get() = calendar.day
@@ -49,6 +51,8 @@ data class FinanceState(
     val weeklyLivingCost: Int,
     val nextBillDueDay: Int,
     val creditScore: Int,
+    /** Gigs worked since the last payday. Gig pay diminishes as this climbs, then resets weekly. */
+    val gigsThisWeek: Int = 0,
 ) {
     fun normalized(): FinanceState = copy(
         cash = cash.coerceAtLeast(0),
@@ -56,6 +60,7 @@ data class FinanceState(
         weeklyLivingCost = weeklyLivingCost.coerceAtLeast(0),
         nextBillDueDay = nextBillDueDay.coerceAtLeast(1),
         creditScore = creditScore.coerceIn(300, 850),
+        gigsThisWeek = gigsThisWeek.coerceAtLeast(0),
     )
 }
 
@@ -93,8 +98,9 @@ enum class BusinessTier(
 ) {
     NONE("Not started", revenuePerClient = 0, maxClients = 0, weeklyOverhead = 0, upgradeCost = 0),
     SIDE_HUSTLE("Side Hustle", revenuePerClient = 45, maxClients = 3, weeklyOverhead = 0, upgradeCost = 500),
-    STUDIO("Studio", revenuePerClient = 80, maxClients = 6, weeklyOverhead = 60, upgradeCost = 1600),
-    AGENCY("Agency", revenuePerClient = 130, maxClients = 12, weeklyOverhead = 140, upgradeCost = 0),
+    STUDIO("Studio", revenuePerClient = 80, maxClients = 6, weeklyOverhead = 60, upgradeCost = 1800),
+    AGENCY("Agency", revenuePerClient = 130, maxClients = 12, weeklyOverhead = 150, upgradeCost = 6000),
+    FIRM("Firm", revenuePerClient = 200, maxClients = 20, weeklyOverhead = 400, upgradeCost = 0),
 }
 
 /**

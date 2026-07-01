@@ -15,6 +15,8 @@ import com.azizjonkasimov.lifesimulator.domain.model.EconomyState
 import com.azizjonkasimov.lifesimulator.domain.model.EventOutcome
 import com.azizjonkasimov.lifesimulator.domain.model.FinanceState
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
+import com.azizjonkasimov.lifesimulator.domain.model.GoalMetrics
+import com.azizjonkasimov.lifesimulator.domain.model.GoalStatus
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryEntry
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryKind
 import com.azizjonkasimov.lifesimulator.domain.model.Investment
@@ -23,6 +25,7 @@ import com.azizjonkasimov.lifesimulator.domain.model.JobSearchState
 import com.azizjonkasimov.lifesimulator.domain.model.LifeEventDefinition
 import com.azizjonkasimov.lifesimulator.domain.model.LifeModifier
 import com.azizjonkasimov.lifesimulator.domain.model.LifeProfile
+import com.azizjonkasimov.lifesimulator.domain.model.PassiveIncomeBreakdown
 import com.azizjonkasimov.lifesimulator.domain.model.PendingDecision
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
@@ -79,7 +82,45 @@ class LifeSimulationEngine(
         state.finances.cash + state.economy.savings + state.economy.investedValue + assetResaleValue(state) - state.finances.debt
 
     fun weeklyLivingTotal(state: GameState): Int =
-        state.finances.weeklyLivingCost + assetWeeklyCost(state)
+        (state.finances.weeklyLivingCost + assetWeeklyCost(state)).coerceAtLeast(0)
+
+    /**
+     * Money that lands each week without spending a day on it: savings interest,
+     * business net, property income, and expected market drift. When [PassiveIncomeBreakdown.total]
+     * reaches the weekly bill, the player is financially independent.
+     */
+    fun passiveIncome(state: GameState): PassiveIncomeBreakdown = PassiveIncomeBreakdown(
+        savingsInterest = state.economy.savings * SAVINGS_WEEKLY_INTEREST_PERCENT / 100,
+        business = businessWeeklyNet(state).coerceAtLeast(0),
+        properties = assetWeeklyIncome(state),
+        market = state.economy.investments.sumOf { it.currentValue * it.type.driftPercent / 100 },
+    )
+
+    fun goalMetrics(state: GameState): GoalMetrics = GoalMetrics(
+        netWorth = netWorth(state),
+        savings = state.economy.savings,
+        investedValue = state.economy.investedValue,
+        debt = state.finances.debt,
+        passiveIncome = passiveIncome(state).total,
+        weeklyCost = weeklyLivingTotal(state),
+        businessTier = state.business.tier,
+        ownsHome = hasTag(state, AssetTag.HOME),
+        ownsIncomeAsset = ownedDefinitions(state).any { it.weeklyIncome > 0 },
+        employed = state.career.employed,
+        careerLevel = state.career.level,
+    )
+
+    /** Every goal with whether it's reached (persisted or live) and its progress, for the UI. */
+    fun goalStatuses(state: GameState): List<GoalStatus> {
+        val metrics = goalMetrics(state)
+        return GoalCatalog.goals.map { goal ->
+            GoalStatus(
+                goal = goal,
+                complete = goal.id in state.completedGoals || goal.isComplete(metrics),
+                progress = goal.progress(metrics).coerceIn(0f, 1f),
+            )
+        }
+    }
 
     fun businessWeeklyRevenue(state: GameState): Int {
         if (!state.business.started) return 0
@@ -92,7 +133,8 @@ class LifeSimulationEngine(
         businessWeeklyRevenue(state) - state.business.tier.weeklyOverhead
 
     fun interviewOdds(state: GameState): Int =
-        (18 + state.jobSearch.searchProgress * 60 / 100 + state.skills.communication / 3).coerceIn(5, 95)
+        (18 + state.jobSearch.searchProgress * 60 / 100 + state.skills.communication / 3 +
+            if (hasTag(state, AssetTag.DEGREE)) 10 else 0).coerceIn(5, 95)
 
     fun clientOdds(state: GameState): Int =
         (42 + state.business.reputation / 2 + if (hasTag(state, AssetTag.BUSINESS_BOOST)) 12 else 0).coerceIn(10, 92)
@@ -171,6 +213,7 @@ class LifeSimulationEngine(
         )
 
         when (action.id) {
+            "gig_work" -> working = working.copy(finances = working.finances.copy(gigsThisWeek = working.finances.gigsThisWeek + 1).normalized())
             "attend_interview" -> resolveInterview(working).let { working = it.state; messages += it.message; entries += it.entry }
             "find_client" -> resolveFindClient(working).let { working = it.state; messages += it.message; entries += it.entry }
             "launch_business" -> {
@@ -288,7 +331,7 @@ class LifeSimulationEngine(
     fun sellAsset(state: GameState, assetId: String): SimulationResult {
         val def = AssetCatalog.byId(assetId) ?: return failure(state, "Unknown item.")
         if (assetId !in state.economy.ownedAssets) return failure(state, "You don't own that.")
-        val resale = def.price / 2
+        val resale = def.effectiveResale
         val updated = state.copy(
             finances = state.finances.copy(cash = state.finances.cash + resale).normalized(),
             economy = state.economy.copy(ownedAssets = state.economy.ownedAssets.filterNot { it == assetId }),
@@ -397,6 +440,12 @@ class LifeSimulationEngine(
         // A decision or event may have pushed promotion over the line.
         working = settlePromotion(working) { entry -> entries += entry; messages += entry.title }
 
+        // Celebrate any goals the day pushed over the line.
+        val (goalState, goalMessages, goalEntries) = reconcileGoals(working)
+        working = goalState
+        messages += goalMessages
+        entries += goalEntries
+
         // Wake up.
         working = working.copy(
             calendar = CalendarState(day = working.day + 1, timeRemaining = DAILY_TIME_BUDGET, actionsToday = 0),
@@ -426,6 +475,39 @@ class LifeSimulationEngine(
             val detail = "${working.business.clients} clients at ${working.business.tier.label}. Overhead ${money(working.business.tier.weeklyOverhead)}."
             messages += if (businessNet >= 0) "Business earned ${money(businessNet)}." else "Business ran ${money(-businessNet)} short."
             entries += HistoryEntry(working.day, "Business week", detail, HistoryKind.FINANCE)
+        }
+
+        // A business isn't build-and-forget: reputation slips and clients can churn each week,
+        // so it has to be tended (marketing holds reputation, which holds clients).
+        if (working.business.started) {
+            var seed = working.rngSeed
+            val rep = working.business.reputation
+            val churnChance = (BUSINESS_CHURN_BASE - rep / 5).coerceIn(BUSINESS_CHURN_MIN, BUSINESS_CHURN_BASE)
+            var lost = 0
+            repeat(working.business.clients) {
+                val (r, next) = roll(seed)
+                seed = next
+                if (r < churnChance) lost++
+            }
+            working = working.copy(
+                rngSeed = seed,
+                business = working.business.copy(
+                    clients = working.business.clients - lost,
+                    reputation = rep - BUSINESS_REP_DECAY,
+                ).normalized(),
+            )
+            if (lost > 0) {
+                messages += "Lost $lost client${if (lost == 1) "" else "s"} to churn."
+                entries += HistoryEntry(working.day, "Client churn", "$lost client${if (lost == 1) "" else "s"} moved on. Keep reputation up to hold them.", HistoryKind.CAREER)
+            }
+        }
+
+        // Property income (rentals, franchise) — the passive earners.
+        val propertyIncome = assetWeeklyIncome(working)
+        if (propertyIncome > 0) {
+            working = working.copy(finances = working.finances.copy(cash = working.finances.cash + propertyIncome).normalized())
+            messages += "Property income ${money(propertyIncome)}."
+            entries += HistoryEntry(working.day, "Property income", "Your holdings paid ${money(propertyIncome)} this week.", HistoryKind.FINANCE)
         }
 
         // Savings interest (tracked as a running lifetime total so the player can see what they've made).
@@ -504,7 +586,30 @@ class LifeSimulationEngine(
             if (moved.isNotEmpty()) messages += "Auto-moved ${moved.joinToString(" and ")}."
         }
 
+        // Cost of living creeps up over time (roughly monthly), so a fixed income can't coast forever.
+        val settlementIndex = state.day / 7
+        if (settlementIndex > 0 && settlementIndex % COST_OF_LIVING_RISE_EVERY == 0) {
+            val rise = (working.finances.weeklyLivingCost * COST_OF_LIVING_RISE_PERCENT / 100).coerceAtLeast(COST_OF_LIVING_RISE_MIN)
+            working = working.copy(finances = working.finances.copy(weeklyLivingCost = working.finances.weeklyLivingCost + rise))
+            messages += "Cost of living rose to ${money(working.finances.weeklyLivingCost)}/week."
+            entries += HistoryEntry(working.day, "Cost of living rose", "Prices went up — the base weekly bill is now ${money(working.finances.weeklyLivingCost)}.", HistoryKind.FINANCE)
+        }
+
+        // New week, fresh gig energy: pay recovers to full.
+        working = working.copy(finances = working.finances.copy(gigsThisWeek = 0))
+
         return SettlementResult(working, messages, entries)
+    }
+
+    /** Marks newly reached goals as complete and returns celebratory messages + history for them. */
+    private fun reconcileGoals(state: GameState): Triple<GameState, List<String>, List<HistoryEntry>> {
+        val metrics = goalMetrics(state)
+        val newly = GoalCatalog.goals.filter { it.id !in state.completedGoals && it.isComplete(metrics) }
+        if (newly.isEmpty()) return Triple(state, emptyList(), emptyList())
+        val updated = state.copy(completedGoals = state.completedGoals + newly.map { it.id })
+        val messages = newly.map { "Goal reached — ${it.title}!" }
+        val entries = newly.map { HistoryEntry(state.day, "Goal: ${it.title}", it.description, HistoryKind.GOAL) }
+        return Triple(updated, messages, entries)
     }
 
     // -----------------------------------------------------------------------
@@ -709,9 +814,13 @@ class LifeSimulationEngine(
     }
 
     private fun dynamicEffectFor(state: GameState, action: DailyActionDefinition): ActionEffect = when (action.id) {
-        "gig_work" -> action.effect.copy(cashDelta = 60 + if (hasTag(state, AssetTag.GIG_BOOST)) 30 else 0)
-        "work_shift" -> action.effect.copy(cashDelta = state.career.salaryPerShift)
-        "overtime" -> action.effect.copy(cashDelta = (state.career.salaryPerShift * 0.6f).toInt() + 25)
+        "gig_work" -> {
+            // Gigs pay less the more you lean on them in a week: a survival tool, not a wealth engine.
+            val base = (GIG_BASE_PAY - state.finances.gigsThisWeek * GIG_FATIGUE_STEP).coerceAtLeast(GIG_MIN_PAY)
+            action.effect.copy(cashDelta = base + if (hasTag(state, AssetTag.GIG_BOOST)) GIG_BOOST_BONUS else 0)
+        }
+        "work_shift" -> action.effect.copy(cashDelta = withDegreeBonus(state, state.career.salaryPerShift))
+        "overtime" -> action.effect.copy(cashDelta = withDegreeBonus(state, (state.career.salaryPerShift * 0.6f).toInt() + 25))
         "study" -> if (hasTag(state, AssetTag.STUDY_BOOST)) {
             action.effect.copy(knowledgeDelta = action.effect.knowledgeDelta + 8, careerSkillDelta = action.effect.careerSkillDelta + 3)
         } else {
@@ -744,6 +853,7 @@ class LifeSimulationEngine(
         state.finances.debt >= 700 -> "Debt pressure"
         state.stats.health <= 35 -> "Fragile"
         state.stats.stress >= 82 -> "Burnout risk"
+        passiveIncome(state).total.let { it > 0 && it >= weeklyLivingTotal(state) } -> "Financially Free"
         netWorth(state) >= 10_000 -> "Wealthy"
         netWorth(state) >= 3_000 -> "Comfortable"
         state.career.employed && state.career.promotionReadiness >= 80 -> "Breakthrough close"
@@ -807,14 +917,21 @@ class LifeSimulationEngine(
     private fun assetWeeklyCost(state: GameState): Int =
         ownedDefinitions(state).sumOf { it.weeklyUpkeep + it.rentDelta }
 
+    private fun assetWeeklyIncome(state: GameState): Int =
+        ownedDefinitions(state).sumOf { it.weeklyIncome }
+
     private fun assetResaleValue(state: GameState): Int =
-        ownedDefinitions(state).sumOf { it.price / 2 }
+        ownedDefinitions(state).sumOf { it.effectiveResale }
+
+    private fun withDegreeBonus(state: GameState, base: Int): Int =
+        base + if (hasTag(state, AssetTag.DEGREE)) base * DEGREE_SALARY_BONUS_PERCENT / 100 else 0
 
     private fun nextTier(tier: BusinessTier): BusinessTier? = when (tier) {
         BusinessTier.NONE -> null
         BusinessTier.SIDE_HUSTLE -> BusinessTier.STUDIO
         BusinessTier.STUDIO -> BusinessTier.AGENCY
-        BusinessTier.AGENCY -> null
+        BusinessTier.AGENCY -> BusinessTier.FIRM
+        BusinessTier.FIRM -> null
     }
 
     private fun jobTitleFor(level: Int): String = when {
@@ -887,6 +1004,20 @@ class LifeSimulationEngine(
         private const val PASSIVE_EVENT_CHANCE = 28
         private const val DECISION_CHANCE = 38
         private const val SAVINGS_WEEKLY_INTEREST_PERCENT = 1
+        // Gig pay diminishes with weekly use, so it can't replace real income.
+        private const val GIG_BASE_PAY = 60
+        private const val GIG_FATIGUE_STEP = 12
+        private const val GIG_MIN_PAY = 15
+        private const val GIG_BOOST_BONUS = 30
+        private const val DEGREE_SALARY_BONUS_PERCENT = 25
+        // A business has to be tended: reputation decays and clients churn each week.
+        private const val BUSINESS_CHURN_BASE = 20
+        private const val BUSINESS_CHURN_MIN = 3
+        private const val BUSINESS_REP_DECAY = 4
+        // Cost of living rises ~monthly so a fixed income can't coast.
+        private const val COST_OF_LIVING_RISE_EVERY = 4
+        private const val COST_OF_LIVING_RISE_PERCENT = 8
+        private const val COST_OF_LIVING_RISE_MIN = 5
         private const val HISTORY_LIMIT = 100
         private const val BURNOUT_RISK_ID = "burnout_risk"
         private val RELATIONSHIP_DECAY = ActionEffect(socialDelta = -2, familyDelta = -1, friendsDelta = -2, networkDelta = -1)

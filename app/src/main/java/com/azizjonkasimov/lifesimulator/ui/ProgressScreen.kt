@@ -6,8 +6,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -24,12 +29,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.azizjonkasimov.lifesimulator.domain.engine.AssetCatalog
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
+import com.azizjonkasimov.lifesimulator.domain.model.GoalStatus
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
 
 @Composable
 internal fun ProgressScreen(
     state: GameState,
+    goals: List<GoalStatus>,
     currentVersionLabel: String,
     updateChecking: Boolean,
     onCheckForUpdates: () -> Unit,
@@ -41,6 +48,7 @@ internal fun ProgressScreen(
         contentPadding = PaddingValues(bottom = 24.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        item { GoalsSection(goals = goals) }
         item { CareerSection(state = state) }
         item { BusinessSection(state = state) }
         item { MoneySection(state = state) }
@@ -92,6 +100,64 @@ internal fun ProgressScreen(
             title = { Text(text = "Reset this life?") },
             text = { Text(text = "This clears the current single save and returns to the start screen.") },
         )
+    }
+}
+
+@Composable
+private fun GoalsSection(goals: List<GoalStatus>) {
+    if (goals.isEmpty()) return
+    val achieved = goals.count { it.complete }
+    SectionCard(
+        title = "Goals",
+        icon = UiIcons.netWorth,
+        trailing = {
+            Text(
+                text = "$achieved/${goals.size}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+    ) {
+        Text(
+            text = "Milestones from breaking even to financial independence — passive income covering your bills.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        goals.forEach { status -> GoalRow(status = status) }
+    }
+}
+
+@Composable
+private fun GoalRow(status: GoalStatus) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (status.complete) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+            contentDescription = if (status.complete) "Done" else "In progress",
+            tint = if (status.complete) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = status.goal.title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = status.goal.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!status.complete && status.progress > 0f) {
+                MeterLine(progress = status.progress, color = MaterialTheme.colorScheme.secondary)
+            }
+        }
     }
 }
 

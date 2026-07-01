@@ -40,6 +40,7 @@ object GameStateJsonCodec {
         .put("pendingDecision", state.pendingDecision?.let { JSONObject().put("eventId", it.eventId) } ?: JSONObject.NULL)
         .put("rngSeed", state.rngSeed)
         .put("history", state.history.historyToJsonArray())
+        .put("completedGoals", JSONArray().also { array -> state.completedGoals.forEach { array.put(it) } })
         .toString()
 
     fun decode(raw: String): GameState {
@@ -59,6 +60,8 @@ object GameStateJsonCodec {
             pendingDecision = root.optJSONObject("pendingDecision")?.let { PendingDecision(it.getString("eventId")) },
             rngSeed = root.getLong("rngSeed"),
             history = root.getJSONArray("history").toHistoryList(),
+            // Read with a default so saves written before v0.9.0 still load (no wipe).
+            completedGoals = root.optJSONArray("completedGoals")?.let { array -> (0 until array.length()).map { array.getString(it) } } ?: emptyList(),
         )
     }
 }
@@ -114,13 +117,16 @@ private fun FinanceState.toJson(): JSONObject = JSONObject()
     .put("weeklyLivingCost", weeklyLivingCost)
     .put("nextBillDueDay", nextBillDueDay)
     .put("creditScore", creditScore)
+    .put("gigsThisWeek", gigsThisWeek)
 
+// gigsThisWeek is read with a default so saves written before v0.9.0 still load (no wipe).
 private fun JSONObject.toFinances(): FinanceState = FinanceState(
     cash = getInt("cash"),
     debt = getInt("debt"),
     weeklyLivingCost = getInt("weeklyLivingCost"),
     nextBillDueDay = getInt("nextBillDueDay"),
     creditScore = getInt("creditScore"),
+    gigsThisWeek = optInt("gigsThisWeek", 0),
 ).normalized()
 
 private fun EconomyState.toJson(): JSONObject = JSONObject()

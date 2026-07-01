@@ -156,6 +156,8 @@ private fun ActiveGameScreen(
                     state = state,
                     dashboard = dashboard,
                     actions = uiState.actions,
+                    passiveIncome = uiState.passiveIncome,
+                    goals = uiState.goals,
                     onPerformAction = viewModel::performAction,
                     onAdvanceDay = viewModel::advanceDay,
                 )
@@ -163,6 +165,8 @@ private fun ActiveGameScreen(
                 GameTab.MONEY -> MoneyScreen(
                     state = state,
                     netWorth = uiState.netWorth,
+                    passiveIncome = uiState.passiveIncome,
+                    weeklyCost = uiState.weeklyCost,
                     onDeposit = viewModel::deposit,
                     onWithdraw = viewModel::withdraw,
                     onPayDebt = viewModel::payDebt,
@@ -175,6 +179,7 @@ private fun ActiveGameScreen(
                 )
                 GameTab.PROGRESS -> ProgressScreen(
                     state = state,
+                    goals = uiState.goals,
                     currentVersionLabel = currentVersionLabel,
                     updateChecking = updateChecking,
                     onCheckForUpdates = onCheckForUpdates,

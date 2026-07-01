@@ -21,13 +21,17 @@ import androidx.compose.ui.unit.dp
 import com.azizjonkasimov.lifesimulator.domain.model.ActionAvailability
 import com.azizjonkasimov.lifesimulator.domain.model.DashboardSnapshot
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
+import com.azizjonkasimov.lifesimulator.domain.model.GoalStatus
 import com.azizjonkasimov.lifesimulator.domain.model.HistoryEntry
+import com.azizjonkasimov.lifesimulator.domain.model.PassiveIncomeBreakdown
 
 @Composable
 internal fun DashboardScreen(
     state: GameState,
     dashboard: DashboardSnapshot,
     actions: List<ActionAvailability>,
+    passiveIncome: PassiveIncomeBreakdown,
+    goals: List<GoalStatus>,
     onPerformAction: (String) -> Unit,
     onAdvanceDay: () -> Unit,
 ) {
@@ -36,7 +40,8 @@ internal fun DashboardScreen(
         contentPadding = PaddingValues(bottom = 24.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item { CashFlowCard(state = state, dashboard = dashboard) }
+        item { CashFlowCard(state = state, dashboard = dashboard, passiveIncome = passiveIncome) }
+        item { NextGoalCard(goals = goals) }
         item { CareerCard(state = state) }
         item { BusinessCard(state = state, dashboard = dashboard) }
         item {
@@ -55,6 +60,7 @@ internal fun DashboardScreen(
 private fun CashFlowCard(
     state: GameState,
     dashboard: DashboardSnapshot,
+    passiveIncome: PassiveIncomeBreakdown,
 ) {
     SectionCard(
         title = "This Week",
@@ -71,12 +77,18 @@ private fun CashFlowCard(
                 modifier = Modifier.weight(1f),
             )
             MetricTile(
-                icon = UiIcons.runway,
-                label = "Runway",
-                value = "${runwayDays(state, dashboard.weeklyCost)} days",
+                icon = UiIcons.invest,
+                label = "Passive",
+                value = money(passiveIncome.total),
+                accent = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.weight(1f),
             )
         }
+        Text(
+            text = "About ${runwayDays(state, dashboard.weeklyCost)} days of cash · passive covers ${passiveCoverPercent(passiveIncome.total, dashboard.weeklyCost)}% of the bill",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(
             text = dashboard.pressureSummary,
             style = MaterialTheme.typography.bodySmall,
@@ -88,6 +100,48 @@ private fun CashFlowCard(
                     LabelChip(text = alert, icon = UiIcons.pressure, tone = ChipTone.WARN)
                 }
             }
+        }
+    }
+}
+
+private fun passiveCoverPercent(passive: Int, weeklyCost: Int): Int =
+    if (weeklyCost <= 0) 0 else passive * 100 / weeklyCost
+
+@Composable
+private fun NextGoalCard(goals: List<GoalStatus>) {
+    if (goals.isEmpty()) return
+    val achieved = goals.count { it.complete }
+    val next = goals.firstOrNull { !it.complete }
+    SectionCard(
+        title = "Goals",
+        icon = UiIcons.netWorth,
+        trailing = {
+            Text(
+                text = "$achieved/${goals.size}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+    ) {
+        if (next == null) {
+            Text(
+                text = "Every goal reached. You've built a free life — keep playing your way.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            ProgressTrack(
+                icon = UiIcons.netWorth,
+                label = "Next: ${next.goal.title}",
+                value = "${(next.progress * 100).toInt()}% there",
+                progress = (next.progress * 100).toInt(),
+                accent = MaterialTheme.colorScheme.secondary,
+            )
+            Text(
+                text = next.goal.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

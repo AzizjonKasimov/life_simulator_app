@@ -11,6 +11,7 @@ import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
 import com.azizjonkasimov.lifesimulator.domain.model.ActionDelta
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
+import com.azizjonkasimov.lifesimulator.domain.model.PassiveIncomeBreakdown
 import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
 import kotlinx.coroutines.launch
 
@@ -114,6 +115,8 @@ class LifeSimulatorViewModel(
             pendingDecision = state?.let(engine::pendingDecisionEvent),
             netWorth = state?.let(engine::netWorth) ?: 0,
             weeklyCost = state?.let(engine::weeklyLivingTotal) ?: 0,
+            passiveIncome = state?.let(engine::passiveIncome) ?: PassiveIncomeBreakdown.EMPTY,
+            goals = state?.let(engine::goalStatuses).orEmpty(),
             selectedTab = selectedTab,
             messages = messages,
             lastActionDeltas = lastActionDeltas,
