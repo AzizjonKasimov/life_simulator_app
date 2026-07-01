@@ -188,14 +188,6 @@ private fun ActiveGameScreen(
             }
         }
     }
-
-    uiState.pendingDecision?.let { decision ->
-        DecisionDialog(
-            event = decision,
-            cash = uiState.gameState?.finances?.cash ?: 0,
-            onChoose = viewModel::resolveDecision,
-        )
-    }
 }
 
 @Composable

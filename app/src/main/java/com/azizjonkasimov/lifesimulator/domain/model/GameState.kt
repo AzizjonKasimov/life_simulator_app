@@ -12,7 +12,6 @@ data class GameState(
     val business: BusinessState,
     val relationships: RelationshipState,
     val modifiers: List<LifeModifier>,
-    val pendingDecision: PendingDecision?,
     val rngSeed: Long,
     val history: List<HistoryEntry>,
     /** Ids of goals already reached and celebrated. Monotonic — a goal stays earned. */

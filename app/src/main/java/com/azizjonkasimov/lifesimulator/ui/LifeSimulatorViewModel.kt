@@ -52,10 +52,6 @@ class LifeSimulatorViewModel(
         dispatch { engine.advanceDay(it) }
     }
 
-    fun resolveDecision(choiceId: String) {
-        dispatch { engine.resolveDecision(it, choiceId) }
-    }
-
     fun deposit(amount: Int) = dispatch { engine.deposit(it, amount) }
     fun withdraw(amount: Int) = dispatch { engine.withdraw(it, amount) }
     fun payDebt(amount: Int) = dispatch { engine.payDebt(it, amount) }
@@ -112,7 +108,6 @@ class LifeSimulatorViewModel(
             gameState = state,
             actions = state?.let(engine::actionAvailability).orEmpty(),
             dashboard = state?.let(engine::dashboardSnapshot),
-            pendingDecision = state?.let(engine::pendingDecisionEvent),
             netWorth = state?.let(engine::netWorth) ?: 0,
             weeklyCost = state?.let(engine::weeklyLivingTotal) ?: 0,
             passiveIncome = state?.let(engine::passiveIncome) ?: PassiveIncomeBreakdown.EMPTY,

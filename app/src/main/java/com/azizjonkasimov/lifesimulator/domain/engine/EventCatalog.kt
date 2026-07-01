@@ -5,8 +5,8 @@ import com.azizjonkasimov.lifesimulator.domain.model.LifeModifier
 import com.azizjonkasimov.lifesimulator.domain.model.LifeEventDefinition
 
 /**
- * Passive events: small, automatic colour at the start of a day. Decisions that
- * ask the player to choose live in [DecisionEventCatalog].
+ * Passive events: small, automatic colour at the start of a day. Each fires when
+ * its condition holds and applies its effect automatically — no player choice.
  */
 object EventCatalog {
     val events: List<LifeEventDefinition> = listOf(

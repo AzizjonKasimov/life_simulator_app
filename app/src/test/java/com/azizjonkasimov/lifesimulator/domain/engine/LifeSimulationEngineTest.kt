@@ -10,15 +10,13 @@ import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.Investment
 import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
 import com.azizjonkasimov.lifesimulator.domain.model.JobSearchState
-import com.azizjonkasimov.lifesimulator.domain.model.PendingDecision
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LifeSimulationEngineTest {
-    private val engine = LifeSimulationEngine(events = emptyList(), decisions = emptyList())
+    private val engine = LifeSimulationEngine(events = emptyList())
 
     @Test
     fun newLifeStartsBrokeUnemployedWithEconomyAndNoLegacyActions() {
@@ -32,7 +30,6 @@ class LifeSimulationEngineTest {
         assertEquals(0, state.jobSearch.searchProgress)
         assertEquals(BusinessTier.NONE, state.business.tier)
         assertEquals(EconomyState.EMPTY, state.economy)
-        assertNull(state.pendingDecision)
         assertTrue("gig_work" in actionIds)
         assertTrue("apply_jobs" in actionIds)
         assertFalse("temp_shift" in actionIds)
@@ -143,22 +140,6 @@ class LifeSimulationEngineTest {
         )
 
         assertEquals(engine.advanceDay(withHolding).state, engine.advanceDay(withHolding).state)
-    }
-
-    @Test
-    fun resolvingADecisionAppliesItsOutcomeAndClearsIt() {
-        val withDecisions = LifeSimulationEngine(events = emptyList())
-        val state = withDecisions.startNewLife().copy(
-            finances = FinanceState(cash = 300, debt = 0, weeklyLivingCost = 190, nextBillDueDay = 7, creditScore = 700),
-            pendingDecision = PendingDecision("splurge"),
-        )
-
-        val resolved = withDecisions.resolveDecision(state, "buy")
-
-        assertTrue(resolved.success)
-        assertEquals(80, resolved.state.finances.cash)
-        assertNull(resolved.state.pendingDecision)
-        assertEquals((state.stats.mood + 14).coerceAtMost(100), resolved.state.stats.mood)
     }
 
     @Test

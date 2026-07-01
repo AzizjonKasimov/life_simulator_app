@@ -15,7 +15,6 @@ import com.azizjonkasimov.lifesimulator.domain.model.InvestmentType
 import com.azizjonkasimov.lifesimulator.domain.model.JobSearchState
 import com.azizjonkasimov.lifesimulator.domain.model.LifeModifier
 import com.azizjonkasimov.lifesimulator.domain.model.LifeProfile
-import com.azizjonkasimov.lifesimulator.domain.model.PendingDecision
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
 import org.json.JSONArray
@@ -37,7 +36,6 @@ object GameStateJsonCodec {
         .put("business", state.business.toJson())
         .put("relationships", state.relationships.toJson())
         .put("modifiers", state.modifiers.modifiersToJsonArray())
-        .put("pendingDecision", state.pendingDecision?.let { JSONObject().put("eventId", it.eventId) } ?: JSONObject.NULL)
         .put("rngSeed", state.rngSeed)
         .put("history", state.history.historyToJsonArray())
         .put("completedGoals", JSONArray().also { array -> state.completedGoals.forEach { array.put(it) } })
@@ -57,7 +55,6 @@ object GameStateJsonCodec {
             business = root.getJSONObject("business").toBusiness(),
             relationships = root.getJSONObject("relationships").toRelationships(),
             modifiers = root.getJSONArray("modifiers").toModifierList(),
-            pendingDecision = root.optJSONObject("pendingDecision")?.let { PendingDecision(it.getString("eventId")) },
             rngSeed = root.getLong("rngSeed"),
             history = root.getJSONArray("history").toHistoryList(),
             // Read with a default so saves written before v0.9.0 still load (no wipe).

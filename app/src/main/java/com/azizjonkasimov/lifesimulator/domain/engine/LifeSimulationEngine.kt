@@ -12,7 +12,6 @@ import com.azizjonkasimov.lifesimulator.domain.model.CoreStats
 import com.azizjonkasimov.lifesimulator.domain.model.DailyActionDefinition
 import com.azizjonkasimov.lifesimulator.domain.model.DashboardSnapshot
 import com.azizjonkasimov.lifesimulator.domain.model.EconomyState
-import com.azizjonkasimov.lifesimulator.domain.model.EventOutcome
 import com.azizjonkasimov.lifesimulator.domain.model.FinanceState
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.GoalMetrics
@@ -26,7 +25,6 @@ import com.azizjonkasimov.lifesimulator.domain.model.LifeEventDefinition
 import com.azizjonkasimov.lifesimulator.domain.model.LifeModifier
 import com.azizjonkasimov.lifesimulator.domain.model.LifeProfile
 import com.azizjonkasimov.lifesimulator.domain.model.PassiveIncomeBreakdown
-import com.azizjonkasimov.lifesimulator.domain.model.PendingDecision
 import com.azizjonkasimov.lifesimulator.domain.model.RelationshipState
 import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
 import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
@@ -34,7 +32,7 @@ import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
 /**
  * The whole game in one place. The day is the unit of play: spend time and energy
  * on actions, then end the day to settle bills, investments, business income, and
- * roll for events and decisions. Money is the throughline — earn it with work and
+ * roll for passive events. Money is the throughline — earn it with work and
  * gigs, grow it with savings and investments, and spend it on assets that change
  * how everything else plays.
  *
@@ -43,7 +41,6 @@ import com.azizjonkasimov.lifesimulator.domain.model.SkillSet
 class LifeSimulationEngine(
     private val actions: List<DailyActionDefinition> = ActionCatalog.actions,
     private val events: List<LifeEventDefinition> = EventCatalog.events,
-    private val decisions: List<LifeEventDefinition> = DecisionEventCatalog.events,
 ) {
 
     // -----------------------------------------------------------------------
@@ -62,7 +59,6 @@ class LifeSimulationEngine(
         business = BusinessState(tier = BusinessTier.NONE, clients = 0, reputation = 0),
         relationships = RelationshipState(family = 50, friends = 42, network = 32),
         modifiers = emptyList(),
-        pendingDecision = null,
         rngSeed = STARTING_SEED,
         history = listOf(
             HistoryEntry(
@@ -138,9 +134,6 @@ class LifeSimulationEngine(
 
     fun clientOdds(state: GameState): Int =
         (42 + state.business.reputation / 2 + if (hasTag(state, AssetTag.BUSINESS_BOOST)) 12 else 0).coerceIn(10, 92)
-
-    fun pendingDecisionEvent(state: GameState): LifeEventDefinition? =
-        state.pendingDecision?.let { pending -> decisions.firstOrNull { it.id == pending.eventId } }
 
     fun dashboardSnapshot(state: GameState): DashboardSnapshot {
         val weeklyCost = weeklyLivingTotal(state)
@@ -356,33 +349,6 @@ class LifeSimulationEngine(
     }
 
     // -----------------------------------------------------------------------
-    // Decisions
-    // -----------------------------------------------------------------------
-
-    fun resolveDecision(state: GameState, choiceId: String): SimulationResult {
-        val event = pendingDecisionEvent(state) ?: return failure(state.copy(pendingDecision = null), "No decision to resolve.")
-        val choice = event.choices.firstOrNull { it.id == choiceId }
-            ?: return failure(state, "Unknown choice.")
-        if (choice.cashCost > state.finances.cash) return failure(state, "Not enough cash for that.")
-
-        val picked = pickOutcome(choice.outcomes, state.rngSeed)
-        val outcome = applyInsurance(state, event, picked.outcome)
-        val afterCost = state.copy(finances = state.finances.copy(cash = state.finances.cash - choice.cashCost).normalized())
-        val withCash = afterCost.copy(finances = afterCost.finances.copy(cash = afterCost.finances.cash + outcome.cashDelta).normalized())
-        val applied = applyEffect(withCash, outcome.effect).copy(
-            pendingDecision = null,
-            rngSeed = picked.seed,
-            history = (withCash.history + HistoryEntry(
-                day = state.day,
-                title = "${event.title}: ${choice.label}",
-                detail = outcome.message,
-                kind = HistoryKind.EVENT,
-            )).trimHistory(),
-        )
-        return SimulationResult(applied, true, listOf(outcome.message))
-    }
-
-    // -----------------------------------------------------------------------
     // End of day
     // -----------------------------------------------------------------------
 
@@ -426,17 +392,7 @@ class LifeSimulationEngine(
             working = working.copy(modifiers = working.modifiers + burnoutRiskModifier())
         }
 
-        // Roll a decision for tomorrow (only if none pending).
-        if (working.pendingDecision == null) {
-            val decisionRoll = rollDecision(working)
-            working = working.copy(rngSeed = decisionRoll.seed)
-            decisionRoll.event?.let { decision ->
-                working = working.copy(pendingDecision = PendingDecision(decision.id))
-                messages += "A decision is waiting: ${decision.title}."
-            }
-        }
-
-        // A decision or event may have pushed promotion over the line.
+        // An event may have pushed promotion over the line.
         working = settlePromotion(working) { entry -> entries += entry; messages += entry.title }
 
         // Celebrate any goals the day pushed over the line.
@@ -762,35 +718,6 @@ class LifeSimulationEngine(
         return EventRoll(event, nextSeed(next))
     }
 
-    private fun rollDecision(state: GameState): EventRoll {
-        val next = nextSeed(state.rngSeed)
-        val eligible = decisions.filter { it.condition(state) }
-        if (eligible.isEmpty() || positiveModulo(next, 100) >= DECISION_CHANCE) return EventRoll(null, next)
-        val event = eligible[positiveModulo(next / 131L, eligible.size)]
-        return EventRoll(event, nextSeed(next))
-    }
-
-    private data class PickedOutcome(val outcome: EventOutcome, val seed: Long)
-
-    private fun pickOutcome(outcomes: List<EventOutcome>, seed: Long): PickedOutcome {
-        if (outcomes.size == 1) return PickedOutcome(outcomes.first(), seed)
-        val total = outcomes.sumOf { it.weight }.coerceAtLeast(1)
-        val next = nextSeed(seed)
-        var pick = positiveModulo(next, total)
-        for (outcome in outcomes) {
-            if (pick < outcome.weight) return PickedOutcome(outcome, next)
-            pick -= outcome.weight
-        }
-        return PickedOutcome(outcomes.last(), next)
-    }
-
-    private fun applyInsurance(state: GameState, event: LifeEventDefinition, outcome: EventOutcome): EventOutcome =
-        if (event.id == "medical" && !outcome.good && outcome.cashDelta < 0 && hasTag(state, AssetTag.INSURANCE)) {
-            outcome.copy(cashDelta = outcome.cashDelta / 2, message = outcome.message + " (insurance covered half)")
-        } else {
-            outcome
-        }
-
     // -----------------------------------------------------------------------
     // Availability + dynamic effects
     // -----------------------------------------------------------------------
@@ -987,7 +914,6 @@ class LifeSimulationEngine(
         const val INTERVIEW_GATE = 40
         private const val STARTING_SEED = 50_001L
         private const val PASSIVE_EVENT_CHANCE = 28
-        private const val DECISION_CHANCE = 38
         private const val SAVINGS_WEEKLY_INTEREST_PERCENT = 1
         // Gig pay diminishes with weekly use, so it can't replace real income.
         private const val GIG_BASE_PAY = 60
