@@ -3,6 +3,7 @@ package com.azizjonkasimov.lifesimulator.ui
 import com.azizjonkasimov.lifesimulator.domain.engine.ActivityOption
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.LifeEvent
+import com.azizjonkasimov.lifesimulator.domain.model.Person
 import com.azizjonkasimov.lifesimulator.domain.model.StatChange
 
 data class LifeSimulatorUiState(
@@ -14,6 +15,9 @@ data class LifeSimulatorUiState(
     val messages: List<String> = emptyList(),
     val statChanges: List<StatChange> = emptyList(),
 )
+
+/** A child you could continue as after death, and the estate share they'd inherit. */
+data class HeirOption(val person: Person, val inheritance: Int)
 
 enum class GameTab(val label: String) {
     LIFE("Life"),

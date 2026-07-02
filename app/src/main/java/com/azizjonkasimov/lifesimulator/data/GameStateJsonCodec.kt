@@ -47,6 +47,7 @@ object GameStateJsonCodec {
         .put("assets", JSONArray().apply { state.assets.forEach { put(it.toJson()) } })
         .put("traits", state.traits.toJsonArray())
         .put("achievements", state.achievements.toJsonArray())
+        .put("generation", state.generation)
         .toString()
 
     fun decode(raw: String): GameState {
@@ -70,6 +71,7 @@ object GameStateJsonCodec {
             assets = root.optJSONArray("assets")?.map { it.toAsset() } ?: emptyList(),
             traits = root.optJSONArray("traits")?.toStringSet() ?: emptySet(),
             achievements = root.optJSONArray("achievements")?.toStringSet() ?: emptySet(),
+            generation = root.optInt("generation", 1),
         )
     }
 
@@ -131,6 +133,7 @@ object GameStateJsonCodec {
         .put("age", age)
         .put("relationship", relationship)
         .put("alive", alive)
+        .put("gender", gender?.name ?: JSONObject.NULL)
 
     private fun JSONObject.toPerson(): Person = Person(
         id = getString("id"),
@@ -139,6 +142,7 @@ object GameStateJsonCodec {
         age = getInt("age"),
         relationship = getInt("relationship"),
         alive = optBoolean("alive", true),
+        gender = if (isNull("gender")) null else runCatching { enumValueOf<Gender>(getString("gender")) }.getOrNull(),
     ).clamped()
 
     private fun Job.toJson(): JSONObject = JSONObject()

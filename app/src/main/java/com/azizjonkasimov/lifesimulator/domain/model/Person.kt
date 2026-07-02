@@ -20,6 +20,8 @@ data class Person(
     val age: Int,
     val relationship: Int,
     val alive: Boolean = true,
+    /** Known for family members; drives who a child becomes if you continue as them. */
+    val gender: Gender? = null,
 ) {
     fun clamped(): Person = copy(relationship = relationship.coerceIn(0, 100))
 }

@@ -4,7 +4,9 @@ import com.azizjonkasimov.lifesimulator.domain.model.Ailment
 import com.azizjonkasimov.lifesimulator.domain.model.AssetKind
 import com.azizjonkasimov.lifesimulator.domain.model.Education
 import com.azizjonkasimov.lifesimulator.domain.model.EducationLevel
+import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.Gender
+import com.azizjonkasimov.lifesimulator.domain.model.LogKind
 import com.azizjonkasimov.lifesimulator.domain.model.Person
 import com.azizjonkasimov.lifesimulator.domain.model.Prison
 import com.azizjonkasimov.lifesimulator.domain.model.RelationType
@@ -240,5 +242,80 @@ class LifeSimulationEngineTest {
         )
         val after = engine.doActivity(state, "meditate").state
         assertTrue("scholar" in after.achievements)
+    }
+
+    // ---- M4: generations --------------------------------------------------
+
+    @Test
+    fun startNewLife_isFirstGeneration() {
+        assertEquals(1, engine.startNewLife("Founder", Gender.MALE).generation)
+    }
+
+    private fun deceasedWithFamily(): GameState {
+        val base = engine.startNewLife("Elder", Gender.MALE)
+        return base.copy(
+            character = base.character.copy(age = 80, money = 250_000),
+            relationships = base.relationships +
+                Person("sp", "Jordan Elder", RelationType.SPOUSE, age = 78, relationship = 70, gender = Gender.FEMALE) +
+                Person("kid1", "Riley Elder", RelationType.CHILD, age = 40, relationship = 80, gender = Gender.FEMALE) +
+                Person("kid2", "Sam Elder", RelationType.CHILD, age = 36, relationship = 60, gender = Gender.MALE),
+            traits = setOf("genius"),
+            alive = false,
+            causeOfDeath = "old age",
+        )
+    }
+
+    @Test
+    fun continueAsHeir_requiresALivingChild() {
+        val dead = engine.startNewLife("Lonely", Gender.FEMALE).copy(alive = false, causeOfDeath = "old age")
+        assertFalse(engine.continueAsHeir(dead, "nobody").success)
+        // Still alive → can't inherit yet.
+        assertFalse(engine.continueAsHeir(engine.startNewLife("Alive", Gender.MALE), "anyone").success)
+    }
+
+    @Test
+    fun continueAsHeir_remapsFamilyAndInheritsTaxedShare() {
+        val dead = deceasedWithFamily()
+        val result = engine.continueAsHeir(dead, "kid1")
+        assertTrue(result.success)
+        val s = result.state
+
+        assertTrue(s.alive)
+        assertEquals("Riley Elder", s.character.name)
+        assertEquals(Gender.FEMALE, s.character.gender)
+        assertEquals(40, s.age)
+        assertEquals(2, s.generation)
+
+        // Estate: 250,000 net worth → 250,000 − (200,000 × 0.4) = 170,000, split over two children = 85,000.
+        assertEquals(85_000, s.character.money)
+
+        // Family reshaped around the heir: late father (you), living mother (spouse), a sibling (other child).
+        assertEquals(3, s.relationships.size)
+        assertTrue("you are their late parent", s.relationships.any { it.relation == RelationType.FATHER && !it.alive })
+        assertTrue("your spouse is now their parent", s.relationships.any { it.id == "sp" && it.relation == RelationType.MOTHER && it.alive })
+        assertTrue("your other child is now their sibling", s.relationships.any { it.id == "kid2" && it.relation == RelationType.SIBLING })
+        assertTrue("the heir is no longer their own child", s.relationships.none { it.relation == RelationType.CHILD })
+
+        // Fresh life: valid inherited traits, cleared history, a milestone opening the story.
+        assertTrue(s.traits.isNotEmpty() && s.traits.all { TraitCatalog.byId(it) != null })
+        assertTrue(s.eventsSeen.isEmpty())
+        assertTrue(s.log.any { it.kind == LogKind.MILESTONE })
+    }
+
+    @Test
+    fun continueAsHeir_isDeterministic() {
+        val dead = deceasedWithFamily()
+        assertEquals(engine.continueAsHeir(dead, "kid1").state, engine.continueAsHeir(dead, "kid1").state)
+    }
+
+    @Test
+    fun estateShareEach_isZeroWhenBroke() {
+        val base = engine.startNewLife("Pauper", Gender.MALE)
+        val dead = base.copy(
+            character = base.character.copy(money = -5_000),
+            relationships = base.relationships + Person("c", "Kid", RelationType.CHILD, age = 20, relationship = 70),
+            alive = false,
+        )
+        assertEquals(0, engine.estateShareEach(dead))
     }
 }

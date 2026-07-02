@@ -4,11 +4,13 @@ A personal Android life simulator game in the BitLife tradition: you're born as 
 
 ## Status
 
-**M3 (depth) of a BitLife-style rebuild.** You're born somewhere in the real world with four core stats — Happiness, Health, Smarts, Looks — and each **Age Up** lives one year: your stats drift, seeded life events happen and ask you to choose, and you can spend the year on activities or time with the people in your life. Grow up, go to university, build a career with promotions, fall in love, marry, raise children, weather illness and the odd brush with the law, and grow old — until you die and get a legacy summary. Every gamble is seeded, so a given life replays identically.
+**M4 (polish + generations) of a BitLife-style rebuild — the roadmap is complete.** You're born somewhere in the real world with four core stats — Happiness, Health, Smarts, Looks — and each **Age Up** lives one year: your stats drift, seeded life events happen and ask you to choose, and you can spend the year on activities or time with the people in your life. Grow up, go to university, build a career with promotions, fall in love, marry, raise children, weather illness and the odd brush with the law, and grow old — until you die and get a legacy summary. Every gamble is seeded, so a given life replays identically.
 
 > This replaces the v0.1–v0.9 **finance** simulator (grow-your-net-worth), which lives on in git history and the released `0.9.x` APKs. The full design for the life sim — systems, content plan, and roadmap — is in [docs/DESIGN.md](docs/DESIGN.md).
 
-M3 adds depth on top of M2's breadth: a **health/illness** system (chronic and acute conditions that drain your health, with treatment to fight back), **crime & prison** (seeded heists with real risk, getting caught, and serving time that puts your life on hold), **assets** (cars, homes, and luxuries that build your net worth), personality **traits** rolled at birth, **achievements**, richer relationship interactions, and **200+ authored events** (up from ~106). All new save fields are additive, so an existing life carries straight across the update. The one remaining, optional M3 piece — generations (playing on as your child when you die) — is laid out in the design doc.
+M3 added depth on top of M2's breadth: a **health/illness** system (chronic and acute conditions that drain your health, with treatment to fight back), **crime & prison** (seeded heists with real risk, getting caught, and serving time that puts your life on hold), **assets** (cars, homes, and luxuries that build your net worth), personality **traits** rolled at birth, **achievements**, and richer relationship interactions.
+
+M4 completes the roadmap with **generations**: when you die, you can continue as one of your children instead of starting over. The family tree reshapes around your heir — your spouse becomes their parent, your other children their siblings — and they inherit a share of your estate, taxed above an exemption so wealth erodes across generations rather than compounding into a dynasty money-printer. Alongside it, a further **event-authoring pass** brings the catalog to **~229 events**, a **balance pass** closes a repeatable-lottery exploit, and the UI gains a bloodline choice on the legacy screen and a generation counter on your Profile. All save fields are additive, so an existing life carries straight across the update.
 
 ## Product Direction
 
@@ -65,7 +67,7 @@ Release signing uses local, gitignored files:
 Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish a release with:
 
 ```powershell
-.\release.ps1 -VersionName 0.12.0 -VersionCode 14 -Notes "M3 depth: health and illness, crime and prison, assets and net worth, personality traits, achievements, and 200+ life events."
+.\release.ps1 -VersionName 0.13.0 -VersionCode 15 -Notes "M4: generations (continue as your child on death, inheriting a taxed share of the estate), a bigger event catalog (~229), a balance pass, and generation UI on the legacy and profile screens."
 ```
 
 The script bumps the version, builds a signed APK, publishes `LifeSimulator-<version>.apk` to `AzizjonKasimov/life-simulator-app-releases`, and updates `version.json` for the in-app updater. The version bump in this repo is left uncommitted for review.
@@ -94,7 +96,7 @@ Each **Age Up** advances one year: stats drift with age (health and looks fade l
 
 **Risk & luck.** Event selection, job hunts, illness, crime, and mortality all flow from one save seed, so a given life replays identically.
 
-**Death & legacy.** Every life ends — by age, health, or misfortune — with a legacy screen recapping your years, final stats, wealth, and notable moments, then the option to start a new life.
+**Death & legacy.** Every life ends — by age, health, or misfortune — with a legacy screen recapping your years, final stats, wealth, and notable moments. From there you can start a fresh life, or — if you left children behind — **carry on the bloodline** by continuing as one of them: they inherit a taxed share of your estate, the family reshapes around them, and the generation counter ticks up.
 
 **Surfaces.** Four tabs: **Life** (your stats, the Age Up button, and the life-story feed), **Activities**, **People**, and **Profile** (character details, stats, and app updates).
 

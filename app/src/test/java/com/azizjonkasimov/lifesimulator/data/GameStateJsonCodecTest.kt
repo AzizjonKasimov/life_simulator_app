@@ -101,4 +101,29 @@ class GameStateJsonCodecTest {
         assertTrue(decoded.traits.isEmpty())
         assertTrue(decoded.achievements.isEmpty())
     }
+
+    @Test
+    fun roundTrip_preservesGenderAndGeneration() {
+        val base = engine.startNewLife("Lineage", Gender.FEMALE)
+        val state = base.copy(
+            relationships = base.relationships +
+                Person("k", "Kid Line", RelationType.CHILD, age = 5, relationship = 90, gender = Gender.MALE),
+            generation = 3,
+        )
+        val decoded = GameStateJsonCodec.decode(GameStateJsonCodec.encode(state))
+        assertEquals(state, decoded)
+    }
+
+    @Test
+    fun decode_toleratesMissingGenderAndGeneration() {
+        // A pre-M4 (schema 6) blob had no per-person gender and no generation counter.
+        val json = JSONObject(GameStateJsonCodec.encode(engine.startNewLife("Pre M4", Gender.MALE)))
+        json.remove("generation")
+        val people = json.getJSONArray("relationships")
+        for (i in 0 until people.length()) (people.get(i) as JSONObject).remove("gender")
+        val decoded = GameStateJsonCodec.decode(json.toString())
+        assertEquals(1, decoded.generation)
+        assertTrue(decoded.relationships.isNotEmpty())
+        assertTrue(decoded.relationships.all { it.gender == null })
+    }
 }

@@ -53,7 +53,12 @@ fun LifeSimulatorApp(
     when {
         uiState.isLoading -> LoadingScreen()
         state == null -> CharacterCreationScreen(onStart = viewModel::startNewLife)
-        !state.alive -> LegacyScreen(state = state, onNewLife = viewModel::resetSave)
+        !state.alive -> LegacyScreen(
+            state = state,
+            heirs = viewModel.heirOptions(),
+            onContinueAsHeir = viewModel::continueAsHeir,
+            onNewLife = viewModel::resetSave,
+        )
         else -> ActiveGameScreen(
             uiState = uiState,
             viewModel = viewModel,

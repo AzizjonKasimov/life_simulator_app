@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -27,6 +29,8 @@ import com.azizjonkasimov.lifesimulator.domain.model.Stat
 @Composable
 fun LegacyScreen(
     state: GameState,
+    heirs: List<HeirOption>,
+    onContinueAsHeir: (String) -> Unit,
     onNewLife: () -> Unit,
 ) {
     val milestones = state.log.filter { it.kind == LogKind.MILESTONE }.reversed().take(7)
@@ -45,7 +49,10 @@ fun LegacyScreen(
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "${state.age} years old · ${state.character.birthplace}",
+            text = buildString {
+                append("${state.age} years old · ${state.character.birthplace}")
+                if (state.generation > 1) append(" · Generation ${state.generation}")
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -86,9 +93,35 @@ fun LegacyScreen(
             }
         }
 
+        if (heirs.isNotEmpty()) {
+            SectionCard(title = "Carry on the bloodline", icon = Icons.Filled.ChildCare) {
+                Text(
+                    text = "Continue as one of your children. They inherit a share of your estate — and your family carries on.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                heirs.forEach { heir ->
+                    Button(
+                        onClick = { onContinueAsHeir(heir.person.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = "Continue as ${heir.person.name}  ·  age ${heir.person.age}  ·  ${money(heir.inheritance)}",
+                        )
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(4.dp))
-        Button(onClick = onNewLife, modifier = Modifier.fillMaxWidth()) {
-            Text(text = "Start a New Life")
+        if (heirs.isEmpty()) {
+            Button(onClick = onNewLife, modifier = Modifier.fillMaxWidth()) {
+                Text(text = "Start a New Life")
+            }
+        } else {
+            OutlinedButton(onClick = onNewLife, modifier = Modifier.fillMaxWidth()) {
+                Text(text = "Start a fresh life instead")
+            }
         }
     }
 }

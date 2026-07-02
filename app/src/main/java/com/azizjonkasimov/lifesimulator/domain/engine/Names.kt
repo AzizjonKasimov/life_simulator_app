@@ -56,6 +56,7 @@ object Names {
             relation = RelationType.MOTHER,
             age = parentAge + rng.nextInt(0, 4),
             relationship = 65 + rng.nextInt(0, 26),
+            gender = Gender.FEMALE,
         )
         family += Person(
             id = "father",
@@ -63,6 +64,7 @@ object Names {
             relation = RelationType.FATHER,
             age = parentAge + rng.nextInt(0, 6),
             relationship = 65 + rng.nextInt(0, 26),
+            gender = Gender.MALE,
         )
         val siblingCount = rng.nextInt(0, 3)
         for (i in 0 until siblingCount) {
@@ -73,6 +75,7 @@ object Names {
                 relation = RelationType.SIBLING,
                 age = 1 + rng.nextInt(0, 6),
                 relationship = 50 + rng.nextInt(0, 31),
+                gender = gender,
             )
         }
         return family
@@ -109,6 +112,7 @@ object Names {
             relation = relation,
             age = age,
             relationship = relationship.coerceIn(0, 100),
+            gender = if (relation == RelationType.PET) null else gender,
         )
     }
 }

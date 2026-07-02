@@ -63,6 +63,8 @@ data class GameState(
     val traits: Set<String> = emptySet(),
     /** Unlocked achievement ids (M3). */
     val achievements: Set<String> = emptySet(),
+    /** Which generation of the bloodline this life is; 1 is the founder (M4). */
+    val generation: Int = 1,
 ) {
     val age: Int get() = character.age
     val stage: LifeStage get() = LifeStage.forAge(character.age)

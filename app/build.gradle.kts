@@ -25,8 +25,8 @@ android {
         applicationId = "com.azizjonkasimov.lifesimulator"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.12.0"
+        versionCode = 15
+        versionName = "0.13.0"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

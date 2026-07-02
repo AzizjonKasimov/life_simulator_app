@@ -54,6 +54,7 @@ fun ProfileScreen(
                 InfoRow("Gender", state.character.gender.label)
                 InfoRow("Born", state.character.birthplace)
                 InfoRow("Age", "${state.age} · ${state.stage.label}")
+                if (state.generation > 1) InfoRow("Generation", "${state.generation}")
                 if (traitLabels.isNotEmpty()) InfoRow("Traits", traitLabels.joinToString(", "))
                 InfoRow("Education", state.education.summary)
                 InfoRow("Job", state.job?.let { "${it.title} · ${money(it.salaryPerYear)}/yr" } ?: "Unemployed")

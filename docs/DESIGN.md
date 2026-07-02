@@ -1,7 +1,8 @@
 # Life Simulator — Game Design (BitLife-style rebuild)
 
-> **Status:** M1–M2 shipped; M3 (depth) built (generations pending). This document is the single target
-> every build session works toward. When something here changes, change it *here first*.
+> **Status:** M1–M4 shipped. The roadmap is complete: depth (M3), generations, and the
+> M4 polish/balancing/event pass are all in. This document is the single target every
+> build session works toward. When something here changes, change it *here first*.
 
 ## 1. Vision
 
@@ -329,20 +330,24 @@ Reuse the existing blob store unchanged in shape:
 
 ## 18. Build roadmap
 
-> **Progress (2026-07-02):** M1 shipped as v0.10.0, M2 as v0.11.0, and M3 depth is built
-> (unreleased). Only M3's optional *generations* remains before M4 polish.
+> **Progress (2026-07-02):** M1 shipped as v0.10.0, M2 as v0.11.0, M3 depth as v0.12.0,
+> and M4 (generations + polish) as v0.13.0. The roadmap is complete; further work is
+> content and tuning on this same spine.
 
 - **M1 — Playable skeleton (the thin slice).** Character creation, four stats, life
   stages, the Age Up loop, the event engine + ~40–50 events, parents + siblings, ~5
   activities, death + legacy, save/load on the new schema, new nav + Life feed screen.
-  *Goal: a real BitLife-in-miniature you can play and react to.*
+  *Goal: a real BitLife-in-miniature you can play and react to.* ✅ v0.10.0
 - **M2 — Breadth.** University + degrees, ~20 jobs with promotions, romance → marriage →
   children, more activities, People interactions, ~120 total events. *Goal: it starts to
-  feel like BitLife.*
+  feel like BitLife.* ✅ v0.11.0
 - **M3 — Depth & spice.** Health/illness system, crime + jail, assets (house/car),
-  richer relationship interactions, traits, achievements, 200+ events. Optional
-  **generations** (inherit as your child on death).
-- **M4 — Polish.** Balancing, a dedicated event-authoring pass, UI refinement, release.
+  richer relationship interactions, traits, achievements, 200+ events. ✅ v0.12.0
+- **M4 — Polish + generations.** **Generations** (continue as your child on death, with a
+  taxed estate inheritance and the family tree reshaped around the heir), an estate-tax
+  balance lever against a dynasty money-printer, a further event-authoring pass (~229
+  events), and UI (bloodline choice on the legacy screen, generation shown on Profile).
+  ✅ v0.13.0
 
 ## 19. Design decisions (owner: you)
 
@@ -355,6 +360,7 @@ Reuse the existing blob store unchanged in shape:
 **Still open (defaults in bold are my recommendation; not blocking M1):**
 
 3. **Aesthetic.** **Keep the current dark "command-center" theme** · lighter/more playful.
-4. **Generations.** Inherit as your child when you die (**M3+, optional**) · single lives only.
+4. **Generations.** ✅ **Decided & built (v0.13.0):** you can continue as your child on
+   death (optional — a fresh life is always offered too).
 5. **Money depth.** **Keep it light early** · reintroduce a simplified yearly economy later.
 ```

@@ -66,6 +66,27 @@ class LifeSimulatorViewModel(
         }
     }
 
+    /** Living children who can carry on the bloodline, each with what they'd inherit. */
+    fun heirOptions(): List<HeirOption> {
+        val state = currentGameState ?: return emptyList()
+        val share = engine.estateShareEach(state)
+        return engine.eligibleHeirs(state).map { HeirOption(it, share) }
+    }
+
+    fun continueAsHeir(heirId: String) {
+        val state = currentGameState ?: return
+        val result = engine.continueAsHeir(state, heirId)
+        viewModelScope.launch {
+            messages = result.errorMessage?.let { listOf(it) } ?: result.messages
+            statChanges = emptyList()
+            if (result.success) {
+                repository.saveGameState(result.state)
+            } else {
+                rebuildState(isLoading = false)
+            }
+        }
+    }
+
     fun selectTab(tab: GameTab) = rebuildState(isLoading = false, selectedTab = tab)
 
     fun showMessage(message: String) {

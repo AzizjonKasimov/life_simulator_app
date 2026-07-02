@@ -38,5 +38,6 @@ object AchievementCatalog {
         Achievement("jailbird", "Jailbird", "Do time behind bars.") { it.inPrison || "ex_convict" in it.flags },
         Achievement("survivor", "Golden Years", "Live to 65.") { it.age >= 65 },
         Achievement("centenarian", "Centenarian", "Live to 100.") { it.age >= 100 },
+        Achievement("dynasty", "Dynasty", "Carry the bloodline to a third generation.") { it.generation >= 3 },
     )
 }

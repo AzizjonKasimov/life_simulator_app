@@ -277,6 +277,128 @@ class LifeSimulationEngine {
         return SimulationResult.success(s, messages = listOfNotNull(message), statChanges = changes)
     }
 
+    // ---- Generations -------------------------------------------------------
+
+    /** The living children who could carry on the bloodline once you've died. */
+    fun eligibleHeirs(state: GameState): List<Person> =
+        if (state.alive) emptyList()
+        else state.relationships.filter { it.alive && it.relation == RelationType.CHILD }
+
+    /** What each heir inherits: the after-tax estate split evenly among the children. */
+    fun estateShareEach(state: GameState): Int {
+        val heirs = eligibleHeirs(state).size
+        if (heirs == 0) return 0
+        return afterTaxEstate(state) / heirs
+    }
+
+    /**
+     * Continue the story as one of your children after death. The family reshapes
+     * around the heir — your spouse becomes their parent, your other children their
+     * siblings, you their late parent — and they inherit a taxed share of the estate.
+     */
+    fun continueAsHeir(state: GameState, heirId: String): SimulationResult {
+        if (state.alive) return SimulationResult.failure(state, "You're still alive.")
+        val heir = state.relationships.find { it.id == heirId && it.alive && it.relation == RelationType.CHILD }
+            ?: return SimulationResult.failure(state, "They can't carry on your line.")
+
+        val deceased = state.character
+        val newSeed = rngFor(state.rngSeed, state.age, "heir-$heirId").nextLong()
+        val rng = Random(newSeed)
+
+        val heirGender = heir.gender ?: if (rng.nextBoolean()) Gender.MALE else Gender.FEMALE
+        val inheritance = estateShareEach(state)
+        val nextGen = state.generation + 1
+
+        val stats = Stats(
+            happiness = 60 + rng.nextInt(-10, 11),
+            health = 80 + rng.nextInt(-10, 16),
+            smarts = 40 + rng.nextInt(0, 41),
+            looks = 40 + rng.nextInt(0, 41),
+        ).clamped()
+        val traits = inheritTraits(state.traits, rng)
+        val traitLabels = traits.mapNotNull { TraitCatalog.byId(it)?.label }
+
+        val age = heir.age
+        val log = buildList {
+            add(LogEntry(age, "You carry on as ${heir.name}, child of ${deceased.name}. (Generation $nextGen)", LogKind.MILESTONE))
+            if (inheritance > 0) add(LogEntry(age, "You inherited ${money(inheritance)} from the estate.", LogKind.MONEY))
+            if (traitLabels.isNotEmpty()) add(LogEntry(age, "You take after your family — a ${traitLabels.joinToString(", ")} streak.", LogKind.NEUTRAL))
+        }
+
+        val heirState = GameState(
+            character = Character(
+                name = heir.name,
+                gender = heirGender,
+                birthplace = deceased.birthplace,
+                age = age,
+                stats = stats,
+                money = inheritance,
+            ),
+            relationships = buildHeirFamily(state, heir),
+            education = educationForAge(age),
+            job = null,
+            flags = if (age >= 18) setOf("hs_grad") else emptySet(),
+            eventsSeen = emptySet(),
+            pendingEventIds = emptyList(),
+            activitiesUsed = emptySet(),
+            rngSeed = newSeed,
+            log = log,
+            alive = true,
+            traits = traits,
+            generation = nextGen,
+        )
+        return SimulationResult.success(applyAchievements(heirState), messages = listOf("You live on through ${heir.name}."))
+    }
+
+    /** Reshape the family tree around [heir]: late parent, surviving parent, siblings. */
+    private fun buildHeirFamily(state: GameState, heir: Person): List<Person> {
+        val deceased = state.character
+        val family = mutableListOf<Person>()
+        // You become the heir's late parent.
+        family += Person(
+            id = "parent_late",
+            name = deceased.name,
+            relation = if (deceased.gender == Gender.MALE) RelationType.FATHER else RelationType.MOTHER,
+            age = state.age,
+            relationship = 75,
+            alive = false,
+            gender = deceased.gender,
+        )
+        // Your surviving spouse becomes the heir's living parent.
+        state.relationships.firstOrNull { it.alive && it.relation == RelationType.SPOUSE }?.let { spouse ->
+            val g = spouse.gender ?: if (deceased.gender == Gender.MALE) Gender.FEMALE else Gender.MALE
+            family += spouse.copy(
+                relation = if (g == Gender.MALE) RelationType.FATHER else RelationType.MOTHER,
+                relationship = spouse.relationship.coerceIn(45, 90),
+                gender = g,
+            )
+        }
+        // Your other living children become the heir's siblings.
+        state.relationships
+            .filter { it.alive && it.relation == RelationType.CHILD && it.id != heir.id }
+            .forEach { family += it.copy(relation = RelationType.SIBLING, relationship = it.relationship.coerceIn(40, 90)) }
+        return family
+    }
+
+    /** Pass on roughly half of a parent's traits, plus the odd fresh one; capped at two. */
+    private fun inheritTraits(parentTraits: Set<String>, rng: Random): Set<String> {
+        val inherited = parentTraits.filterTo(mutableSetOf()) { rng.nextDouble() < 0.5 }
+        if (inherited.isEmpty() || rng.nextInt(0, 3) == 0) inherited += TraitCatalog.roll(rng)
+        return inherited.take(2).toSet()
+    }
+
+    private fun educationForAge(age: Int): Education = when {
+        age < 5 -> Education(EducationLevel.NONE)
+        age < 14 -> Education(EducationLevel.PRIMARY)
+        else -> Education(EducationLevel.SECONDARY)
+    }
+
+    private fun afterTaxEstate(state: GameState): Int {
+        val estate = state.netWorth.coerceAtLeast(0)
+        val taxable = (estate - ESTATE_EXEMPTION).coerceAtLeast(0)
+        return (estate - (taxable * ESTATE_TAX_RATE).toInt()).coerceAtLeast(0)
+    }
+
     // ---- UI-facing queries -------------------------------------------------
 
     fun availableActivities(state: GameState): List<ActivityOption> {
@@ -853,5 +975,10 @@ class LifeSimulationEngine {
         const val TRIP_COST = 800
         const val UNI_TUITION = 4000
         const val GRAD_TUITION = 8000
+        // The estate passes tax-free up to the exemption; the rest is taxed before
+        // being split among heirs, so wealth erodes across generations rather than
+        // compounding into a dynasty money-printer.
+        const val ESTATE_EXEMPTION = 50_000
+        const val ESTATE_TAX_RATE = 0.4
     }
 }
