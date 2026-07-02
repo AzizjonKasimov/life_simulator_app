@@ -4,11 +4,11 @@ A personal Android life simulator game in the BitLife tradition: you're born as 
 
 ## Status
 
-**M1 (thin playable slice) of a BitLife-style rebuild.** You're born somewhere in the real world with four core stats — Happiness, Health, Smarts, Looks — and each **Age Up** lives one year: your stats drift, seeded life events happen and ask you to choose, and you can spend the year on activities or time with the people in your life. Education milestones, a light job layer, money, and family all play out year by year until you die and get a legacy summary. Every gamble is seeded, so a given life replays identically.
+**M2 (breadth) of a BitLife-style rebuild.** You're born somewhere in the real world with four core stats — Happiness, Health, Smarts, Looks — and each **Age Up** lives one year: your stats drift, seeded life events happen and ask you to choose, and you can spend the year on activities or time with the people in your life. Grow up, go to university, build a career with promotions, fall in love, marry, raise children, and grow old — until you die and get a legacy summary. Every gamble is seeded, so a given life replays identically.
 
 > This replaces the v0.1–v0.9 **finance** simulator (grow-your-net-worth), which lives on in git history and the released `0.9.x` APKs. The full design for the life sim — systems, content plan, and roadmap — is in [docs/DESIGN.md](docs/DESIGN.md).
 
-M1 includes: character creation, the year-based Age Up loop, ~50 authored events across life stages, parents and siblings you can interact with, a handful of activities, a light job/education layer, death, and a legacy screen. M2 (breadth: university, careers with promotions, romance → marriage → children, ~120 events) and M3 (depth: health/illness, crime, assets, 200+ events) are laid out in the design doc.
+M2 adds: university and graduate degrees, 21 careers with promotion ladders, romance → marriage → children, more activities (dating, vacations, adopting a pet), contextual relationship interactions, and ~106 authored events (up from ~50). Save fields were added backward-compatibly, so an existing life carries across the update. M3 (depth: health/illness, crime + jail, assets, achievements, 200+ events) is laid out in the design doc.
 
 ## Product Direction
 
@@ -65,7 +65,7 @@ Release signing uses local, gitignored files:
 Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish a release with:
 
 ```powershell
-.\release.ps1 -VersionName 0.10.0 -VersionCode 10 -Notes "BitLife-style rebuild (M1): born, Age Up through a life of seeded events and choices, relationships, death, and a legacy screen."
+.\release.ps1 -VersionName 0.11.0 -VersionCode 13 -Notes "M2 breadth: university and degrees, 21 careers with promotions, romance to marriage to children, more activities, and ~106 life events."
 ```
 
 The script bumps the version, builds a signed APK, publishes `LifeSimulator-<version>.apk` to `AzizjonKasimov/life-simulator-app-releases`, and updates `version.json` for the in-app updater. The version bump in this repo is left uncommitted for review.
@@ -80,9 +80,9 @@ Each **Age Up** advances one year: stats drift with age (health and looks fade l
 
 **Life stages.** Infant → Child → Teen → Young Adult → Adult → Senior gate which events can fire and what you can do — from playground scrapes and school dances to careers, houses, and grandchildren.
 
-**People.** Parents and siblings to start; each is a real person with a name, an age, and a relationship meter you can raise by spending time together. (More relationship types — friends, partners, children — arrive in M2.)
+**People.** Parents and siblings to start; over a life you make friends, meet partners, marry, and have children — each a real person with a name, an age, and a relationship meter. From the People tab you can spend time, converse, compliment, gift, propose, start a family, ask for money, or fall out — the interactions offered depend on who they are to you.
 
-**Work & school.** School and graduation happen on their own; from 16+ you can look for a job (a seeded, smarts-weighted hire) that pays a yearly salary.
+**Work & school.** School and graduation happen on their own; from 16+ you can take a part-time job. After high school you can enrol in **university** (and grad school) for a degree that unlocks better careers. Jobs sit on a ladder of 21 careers — you're hired by a seeded, smarts-weighted roll, then climb through **promotions** driven by your Smarts and years of tenure, with work events (raises, layoffs, being headhunted or fired) along the way.
 
 **Money.** A light layer for now — salary in, event and activity costs out. It's one system among many, not the scoreboard.
 

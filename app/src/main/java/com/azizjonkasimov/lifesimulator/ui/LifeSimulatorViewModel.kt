@@ -7,9 +7,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.azizjonkasimov.lifesimulator.data.SaveRepository
+import com.azizjonkasimov.lifesimulator.domain.engine.InteractionOption
 import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.Gender
+import com.azizjonkasimov.lifesimulator.domain.model.Person
 import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
 import com.azizjonkasimov.lifesimulator.domain.model.StatChange
 import kotlinx.coroutines.launch
@@ -52,6 +54,9 @@ class LifeSimulatorViewModel(
 
     fun interact(personId: String, interactionId: String) =
         dispatch { engine.interact(it, personId, interactionId) }
+
+    fun interactionsFor(person: Person): List<InteractionOption> =
+        currentGameState?.let { engine.interactionsFor(it, person) }.orEmpty()
 
     fun resetSave() {
         viewModelScope.launch {

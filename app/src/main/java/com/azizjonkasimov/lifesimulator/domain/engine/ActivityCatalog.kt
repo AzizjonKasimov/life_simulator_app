@@ -1,12 +1,17 @@
 package com.azizjonkasimov.lifesimulator.domain.engine
 
 import com.azizjonkasimov.lifesimulator.domain.model.Effect
+import com.azizjonkasimov.lifesimulator.domain.model.EducationLevel
+import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.LogKind
+import com.azizjonkasimov.lifesimulator.domain.model.RelationType
 import com.azizjonkasimov.lifesimulator.domain.model.Stat
 
 /**
  * A between-years action the player can choose. Each may be done once per year
- * (tracked by [GameState.activitiesUsed]) and costs money up front.
+ * (tracked by [GameState.activitiesUsed]) and costs money up front. [requires] is a
+ * structural gate — when false the activity is hidden entirely (e.g. university once
+ * you already hold a degree).
  */
 data class Activity(
     val id: String,
@@ -18,6 +23,7 @@ data class Activity(
     val effects: List<Effect> = emptyList(),
     val requiresUnemployed: Boolean = false,
     val logKind: LogKind = LogKind.NEUTRAL,
+    val requires: (GameState) -> Boolean = { true },
     /** Engine-handled special behaviour, e.g. "find_job". */
     val special: String? = null,
 )
@@ -71,6 +77,19 @@ object ActivityCatalog {
             logKind = LogKind.NEUTRAL,
         ),
         Activity(
+            id = "volunteer",
+            label = "Volunteer",
+            description = "Give back to your community.",
+            logText = "Spent the year volunteering.",
+            cost = 0,
+            minAge = 13,
+            effects = listOf(
+                Effect.StatDelta(Stat.HAPPINESS, 3),
+                Effect.StatDelta(Stat.SMARTS, 1),
+            ),
+            logKind = LogKind.NEUTRAL,
+        ),
+        Activity(
             id = "night_out",
             label = "Night Out",
             description = "Let loose with friends for a mood boost.",
@@ -84,6 +103,61 @@ object ActivityCatalog {
             logKind = LogKind.NEUTRAL,
         ),
         Activity(
+            id = "vacation",
+            label = "Take a Vacation",
+            description = "Get away from it all and recharge.",
+            logText = "Took a proper vacation and came back refreshed.",
+            cost = 1500,
+            minAge = 18,
+            effects = listOf(
+                Effect.StatDelta(Stat.HAPPINESS, 8),
+                Effect.StatDelta(Stat.HEALTH, 3),
+            ),
+            logKind = LogKind.NEUTRAL,
+        ),
+        Activity(
+            id = "date",
+            label = "Go on a Date",
+            description = "Look for love — or make time for the one you have.",
+            logText = "",
+            cost = 40,
+            minAge = 16,
+            logKind = LogKind.RELATIONSHIP,
+            special = "date",
+        ),
+        Activity(
+            id = "adopt_pet",
+            label = "Adopt a Pet",
+            description = "Bring home a companion.",
+            logText = "",
+            cost = 200,
+            minAge = 10,
+            logKind = LogKind.RELATIONSHIP,
+            special = "adopt_pet",
+        ),
+        Activity(
+            id = "enroll_university",
+            label = "Enrol in University",
+            description = "A degree opens up better careers. ~\$4,000/yr for four years.",
+            logText = "",
+            cost = 0,
+            minAge = 18,
+            logKind = LogKind.SCHOOL,
+            special = "enroll_university",
+            requires = { !it.education.isEnrolled && it.education.level == EducationLevel.SECONDARY && "hs_grad" in it.flags },
+        ),
+        Activity(
+            id = "enroll_grad",
+            label = "Enrol in Grad School",
+            description = "A graduate degree for the top of your field. ~\$8,000/yr for two years.",
+            logText = "",
+            cost = 0,
+            minAge = 21,
+            logKind = LogKind.SCHOOL,
+            special = "enroll_grad",
+            requires = { !it.education.isEnrolled && it.education.level == EducationLevel.UNIVERSITY },
+        ),
+        Activity(
             id = "find_job",
             label = "Look for a Job",
             description = "Search and apply for work.",
@@ -93,6 +167,17 @@ object ActivityCatalog {
             requiresUnemployed = true,
             logKind = LogKind.WORK,
             special = "find_job",
+        ),
+        Activity(
+            id = "quit_job",
+            label = "Quit Your Job",
+            description = "Walk away — then you can look for something new.",
+            logText = "You quit your job.",
+            cost = 0,
+            minAge = 16,
+            logKind = LogKind.WORK,
+            special = "quit_job",
+            requires = { it.job != null },
         ),
     )
 

@@ -23,6 +23,16 @@ sealed interface Effect {
     ) : Effect
     data class AddFlag(val flag: String) : Effect
     data class StartJob(val jobId: String) : Effect
+    /** Bring a new person into your life (partner, child, friend, pet); name is generated. */
+    data class AddPerson(val relation: RelationType, val relationship: Int = 60) : Effect
+    /** Change everyone of relation [from] into [to] — e.g. PARTNER → SPOUSE on marriage. */
+    data class PromoteRelation(val from: RelationType, val to: RelationType) : Effect
+    /** Remove everyone of a relation from your life — a breakup or divorce. */
+    data class RemovePeople(val relation: RelationType) : Effect
+    /** Bump your current job up one rung, if there is one. */
+    data object PromoteJob : Effect
+    /** Lose your job (fired or laid off). */
+    data object LoseJob : Effect
 }
 
 data class EventChoice(

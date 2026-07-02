@@ -34,6 +34,11 @@ object Names {
         "Wright", "Lopez", "Hill", "Green", "Nakamura", "Okafor", "Kim", "Rossi",
     )
 
+    private val petNames = listOf(
+        "Rex", "Bella", "Max", "Luna", "Charlie", "Milo", "Daisy", "Coco",
+        "Buddy", "Ziggy", "Nala", "Shadow", "Peanut", "Mochi", "Biscuit", "Pepper",
+    )
+
     fun birthplace(rng: Random): String = birthplaces.random(rng)
 
     fun firstName(gender: Gender, rng: Random): String =
@@ -71,5 +76,39 @@ object Names {
             )
         }
         return family
+    }
+
+    /**
+     * Generate a new person entering the player's life. Partners/friends get their own
+     * surname; children take the [familyName]; pets get a single pet name. Ages are
+     * chosen to fit the [relation] relative to the player's [playerAge].
+     */
+    fun generatePerson(
+        relation: RelationType,
+        playerAge: Int,
+        familyName: String,
+        relationship: Int,
+        rng: Random,
+    ): Person {
+        val gender = if (rng.nextBoolean()) Gender.MALE else Gender.FEMALE
+        val name = when (relation) {
+            RelationType.PET -> petNames.random(rng)
+            RelationType.CHILD -> "${firstName(gender, rng)} $familyName"
+            else -> "${firstName(gender, rng)} ${lastName(rng)}"
+        }
+        val age = when (relation) {
+            RelationType.CHILD, RelationType.PET -> 0
+            RelationType.PARTNER, RelationType.SPOUSE -> (playerAge + rng.nextInt(-3, 4)).coerceAtLeast(18)
+            RelationType.FRIEND, RelationType.COWORKER -> (playerAge + rng.nextInt(-5, 6)).coerceAtLeast(6)
+            else -> playerAge
+        }
+        val id = "${relation.name.lowercase()}_${rng.nextInt(100_000, 1_000_000)}"
+        return Person(
+            id = id,
+            name = name,
+            relation = relation,
+            age = age,
+            relationship = relationship.coerceIn(0, 100),
+        )
     }
 }

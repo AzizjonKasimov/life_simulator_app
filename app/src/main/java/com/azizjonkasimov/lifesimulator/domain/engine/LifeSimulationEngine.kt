@@ -11,6 +11,7 @@ import com.azizjonkasimov.lifesimulator.domain.model.LifeEvent
 import com.azizjonkasimov.lifesimulator.domain.model.LogEntry
 import com.azizjonkasimov.lifesimulator.domain.model.LogKind
 import com.azizjonkasimov.lifesimulator.domain.model.Person
+import com.azizjonkasimov.lifesimulator.domain.model.RelationType
 import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
 import com.azizjonkasimov.lifesimulator.domain.model.Stat
 import com.azizjonkasimov.lifesimulator.domain.model.StatChange
@@ -24,7 +25,13 @@ data class ActivityOption(
     val reason: String?,
 )
 
-data class Interaction(val id: String, val label: String)
+/** A UI-facing interaction offered for one person, with its availability. */
+data class InteractionOption(
+    val id: String,
+    val label: String,
+    val enabled: Boolean,
+    val reason: String?,
+)
 
 /**
  * The whole simulation. Time advances one year per [ageUp]; everything the player
@@ -77,13 +84,7 @@ class LifeSimulationEngine {
         )
 
         s = applyAnnualDrift(s)
-
-        val job = s.job
-        if (job != null) {
-            s = s.copy(character = s.character.copy(money = s.character.money + job.salaryPerYear))
-            logs += LogEntry(newAge, "Earned ${money(job.salaryPerYear)} working as a ${job.title}.", LogKind.MONEY)
-        }
-
+        s = payAndPromote(s, newAge, logs)
         s = progressEducation(s, logs)
         s = ageRelationships(s, rng, logs)
 
@@ -145,6 +146,7 @@ class LifeSimulationEngine {
         val activity = ActivityCatalog.byId(activityId) ?: return SimulationResult.failure(state, "Unknown activity.")
         if (state.age < activity.minAge) return SimulationResult.failure(state, "You're too young for that.")
         if (activity.requiresUnemployed && state.job != null) return SimulationResult.failure(state, "You already have a job.")
+        if (!activity.requires(state)) return SimulationResult.failure(state, "You can't do that right now.")
         if (activityId in state.activitiesUsed) return SimulationResult.failure(state, "You've already done that this year.")
         if (state.character.money < activity.cost) return SimulationResult.failure(state, "You can't afford that.")
 
@@ -155,17 +157,8 @@ class LifeSimulationEngine {
         s = applyEffects(s, activity.effects)
         s = s.copy(activitiesUsed = s.activitiesUsed + activityId)
 
-        val logs = mutableListOf<LogEntry>()
-        val messages = mutableListOf<String>()
-        if (activity.special == "find_job") {
-            val (next, log, message) = tryFindJob(s)
-            s = next
-            logs += log
-            messages += message
-        } else if (activity.logText.isNotBlank()) {
-            logs += LogEntry(s.age, activity.logText, activity.logKind)
-        }
-        s = s.copy(log = s.log + logs)
+        val (afterSpecial, logs, messages) = handleSpecial(s, activity)
+        s = afterSpecial.copy(log = afterSpecial.log + logs)
         return SimulationResult.success(
             s,
             messages = messages,
@@ -178,21 +171,81 @@ class LifeSimulationEngine {
         val person = state.relationships.find { it.id == personId }
             ?: return SimulationResult.failure(state, "They're not in your life.")
         if (!person.alive) return SimulationResult.failure(state, "They've passed away.")
+        val option = interactionsFor(state, person).find { it.id == interactionId }
+            ?: return SimulationResult.failure(state, "You can't do that.")
+        if (!option.enabled) return SimulationResult.failure(state, option.reason ?: "You can't do that right now.")
 
-        val (relDelta, happyDelta, text) = when (interactionId) {
-            "spend_time" -> Triple(8, 3, "You spent quality time with ${person.name}.")
-            "compliment" -> Triple(5, 1, "You gave ${person.name} a heartfelt compliment.")
-            "insult" -> Triple(-12, -1, "You insulted ${person.name}. It did not go over well.")
+        val beforeStats = state.character.stats
+        val beforeMoney = state.character.money
+        val relBefore = person.relationship
+        val rng = rngFor(state.rngSeed, state.age, "interact-$personId-$interactionId-${state.log.size}")
+
+        val effects = mutableListOf<Effect>()
+        val text: String
+        var message: String? = null
+        when (interactionId) {
+            "spend_time" -> {
+                effects += Effect.RelationshipDelta(8, personId = personId); effects += happy(3)
+                text = "You spent quality time with ${person.name}."
+            }
+            "converse" -> {
+                val delta = rng.nextInt(-2, 7)
+                effects += Effect.RelationshipDelta(delta, personId = personId)
+                text = if (delta >= 0) "You had a nice chat with ${person.name}." else "Your talk with ${person.name} got a little tense."
+            }
+            "compliment" -> {
+                effects += Effect.RelationshipDelta(5, personId = personId); effects += happy(1)
+                text = "You gave ${person.name} a heartfelt compliment."
+            }
+            "insult" -> {
+                effects += Effect.RelationshipDelta(-12, personId = personId); effects += happy(-1)
+                text = "You insulted ${person.name}. It did not go over well."
+            }
+            "gift" -> {
+                effects += cashE(-GIFT_COST); effects += Effect.RelationshipDelta(12, personId = personId); effects += happy(1)
+                text = "You gave ${person.name} a thoughtful gift."
+            }
+            "propose" -> {
+                effects += Effect.PromoteRelation(RelationType.PARTNER, RelationType.SPOUSE)
+                effects += Effect.AddFlag("married"); effects += happy(12)
+                text = "${person.name} said yes! You're married."; message = "You married ${person.name}!"
+            }
+            "break_up" -> {
+                effects += Effect.RemovePeople(RelationType.PARTNER); effects += happy(-8)
+                text = "You broke up with ${person.name}."; message = "You and ${person.name} broke up."
+            }
+            "have_child" -> {
+                effects += Effect.AddPerson(RelationType.CHILD, 85); effects += happy(8)
+                text = "You and ${person.name} welcomed a new child."; message = "A new arrival!"
+            }
+            "divorce" -> {
+                val settlement = (state.character.money / 4).coerceAtLeast(0)
+                effects += Effect.RemovePeople(RelationType.SPOUSE)
+                if (settlement > 0) effects += cashE(-settlement)
+                effects += happy(-10)
+                text = "You divorced ${person.name}."; message = "You divorced ${person.name}."
+            }
+            "ask_money" -> {
+                if (person.relationship >= 45) {
+                    val gift = 200 + rng.nextInt(0, 800)
+                    effects += cashE(gift); effects += Effect.RelationshipDelta(-3, personId = personId)
+                    text = "${person.name} lent you ${money(gift)}."; message = "${person.name} gave you ${money(gift)}."
+                } else {
+                    effects += Effect.RelationshipDelta(-2, personId = personId)
+                    text = "${person.name} turned down your request for money."; message = "They said no."
+                }
+            }
             else -> return SimulationResult.failure(state, "You can't do that.")
         }
-        val updated = state.relationships.map {
-            if (it.id == personId) it.copy(relationship = it.relationship + relDelta).clamped() else it
-        }
-        val s = state.copy(
-            relationships = updated,
-            character = state.character.copy(stats = state.character.stats.withDelta(Stat.HAPPINESS, happyDelta)),
-        ).let { it.copy(log = it.log + LogEntry(it.age, text, LogKind.RELATIONSHIP)) }
-        return SimulationResult.success(s, statChanges = listOf(StatChange("${person.name} (${person.relation.label})", relDelta)))
+
+        var s = applyEffects(state, effects)
+        s = s.copy(log = s.log + LogEntry(s.age, text, LogKind.RELATIONSHIP))
+        s = checkHealthDeath(s)
+
+        val changes = statChanges(beforeStats, beforeMoney, s.character.stats, s.character.money).toMutableList()
+        val relAfter = s.relationships.find { it.id == personId }?.relationship ?: relBefore
+        if (relAfter != relBefore) changes.add(0, StatChange(person.name, relAfter - relBefore))
+        return SimulationResult.success(s, messages = listOfNotNull(message), statChanges = changes)
     }
 
     // ---- UI-facing queries -------------------------------------------------
@@ -200,7 +253,7 @@ class LifeSimulationEngine {
     fun availableActivities(state: GameState): List<ActivityOption> {
         if (!state.alive) return emptyList()
         return ActivityCatalog.all
-            .filter { state.age >= it.minAge && !(it.requiresUnemployed && state.job != null) }
+            .filter { state.age >= it.minAge && !(it.requiresUnemployed && state.job != null) && it.requires(state) }
             .map { activity ->
                 val reason = when {
                     activity.id in state.activitiesUsed -> "Done this year"
@@ -214,11 +267,36 @@ class LifeSimulationEngine {
     fun pendingEvent(state: GameState): LifeEvent? =
         state.pendingEventIds.firstOrNull()?.let { EventCatalog.byId(it) }
 
-    fun interactionsFor(person: Person): List<Interaction> = listOf(
-        Interaction("spend_time", "Spend time"),
-        Interaction("compliment", "Compliment"),
-        Interaction("insult", "Insult"),
-    )
+    /** The interactions offered for [person] right now, contextual to their relation and your money. */
+    fun interactionsFor(state: GameState, person: Person): List<InteractionOption> {
+        if (!state.alive || !person.alive) return emptyList()
+        val cash = state.character.money
+        val options = mutableListOf(
+            InteractionOption("spend_time", "Spend time", true, null),
+            InteractionOption("converse", "Converse", true, null),
+            InteractionOption("compliment", "Compliment", true, null),
+            InteractionOption("gift", "Give a gift", cash >= GIFT_COST, if (cash >= GIFT_COST) null else "Costs ${money(GIFT_COST)}"),
+        )
+        when (person.relation) {
+            RelationType.PARTNER -> {
+                val ready = person.relationship >= 55 && state.age >= 18
+                options += InteractionOption("propose", "Propose", ready, if (ready) null else "They're not ready")
+                options += InteractionOption("break_up", "Break up", true, null)
+            }
+            RelationType.SPOUSE -> {
+                val kids = state.relationships.count { it.relation == RelationType.CHILD }
+                options += InteractionOption("have_child", "Have a child", kids < 6, if (kids < 6) null else "Your hands are full")
+                options += InteractionOption("ask_money", "Ask for money", true, null)
+                options += InteractionOption("divorce", "Divorce", true, null)
+            }
+            RelationType.MOTHER, RelationType.FATHER -> {
+                options += InteractionOption("ask_money", "Ask for money", true, null)
+            }
+            else -> Unit
+        }
+        options += InteractionOption("insult", "Insult", true, null)
+        return options
+    }
 
     // ---- Internals ---------------------------------------------------------
 
@@ -227,6 +305,8 @@ class LifeSimulationEngine {
         var relationships = state.relationships
         var flags = state.flags
         var job = state.job
+        var jobYears = state.jobYears
+        val familyName = character.name.substringAfterLast(' ', "")
         for (effect in effects) {
             when (effect) {
                 is Effect.StatDelta -> character = character.copy(stats = character.stats.withDelta(effect.stat, effect.amount))
@@ -237,10 +317,20 @@ class LifeSimulationEngine {
                     if (match && p.alive) p.copy(relationship = p.relationship + effect.amount).clamped() else p
                 }
                 is Effect.AddFlag -> flags = flags + effect.flag
-                is Effect.StartJob -> JobCatalog.byId(effect.jobId)?.let { job = it }
+                is Effect.StartJob -> JobCatalog.byId(effect.jobId)?.let { job = it; jobYears = 0 }
+                is Effect.AddPerson -> {
+                    val rng = rngFor(state.rngSeed, character.age, "person${relationships.size}")
+                    relationships = relationships + Names.generatePerson(effect.relation, character.age, familyName, effect.relationship, rng)
+                }
+                is Effect.PromoteRelation -> relationships = relationships.map { p ->
+                    if (p.relation == effect.from && p.alive) p.copy(relation = effect.to) else p
+                }
+                is Effect.RemovePeople -> relationships = relationships.filterNot { it.relation == effect.relation }
+                is Effect.PromoteJob -> job?.let { held -> JobCatalog.promoted(held)?.let { job = it; jobYears = 0 } }
+                is Effect.LoseJob -> { job = null; jobYears = 0 }
             }
         }
-        return state.copy(character = character, relationships = relationships, flags = flags, job = job)
+        return state.copy(character = character, relationships = relationships, flags = flags, job = job, jobYears = jobYears)
     }
 
     private fun applyAnnualDrift(state: GameState): GameState {
@@ -263,18 +353,57 @@ class LifeSimulationEngine {
         return state.copy(character = state.character.copy(stats = stats))
     }
 
+    /** Pay this year's salary, bank a year of tenure, and roll for a promotion. */
+    private fun payAndPromote(state: GameState, age: Int, logs: MutableList<LogEntry>): GameState {
+        val job = state.job ?: return state
+        var s = state.copy(
+            character = state.character.copy(money = state.character.money + job.salaryPerYear),
+            jobYears = state.jobYears + 1,
+        )
+        logs += LogEntry(age, "Earned ${money(job.salaryPerYear)} working as a ${job.title}.", LogKind.MONEY)
+        val next = JobCatalog.promoted(job) ?: return s
+        val chance = promotionChance(s.character.stats.smarts, state.jobYears)
+        if (rngFor(state.rngSeed, age, "promo").nextDouble() < chance) {
+            s = s.copy(job = next, jobYears = 0)
+            logs += LogEntry(age, "You were promoted to ${next.title} — now ${money(next.salaryPerYear)}/yr.", LogKind.WORK)
+        }
+        return s
+    }
+
+    private fun promotionChance(smarts: Int, jobYears: Int): Double =
+        (0.04 + smarts / 500.0 + jobYears * 0.03).coerceAtMost(0.4)
+
     private fun progressEducation(state: GameState, logs: MutableList<LogEntry>): GameState {
         val age = state.age
+        val edu = state.education
+        if (edu.isEnrolled) {
+            val tuition = if (edu.enrolledIn == EducationLevel.GRADUATE) GRAD_TUITION else UNI_TUITION
+            val studied = state.copy(
+                character = state.character.copy(
+                    money = state.character.money - tuition,
+                    stats = state.character.stats.withDelta(Stat.SMARTS, 3),
+                ),
+            )
+            val yearsLeft = edu.yearsLeft - 1
+            return if (yearsLeft <= 0) {
+                val completed = edu.enrolledIn!!
+                val flag = if (completed == EducationLevel.GRADUATE) "grad_degree" else "college_grad"
+                logs += LogEntry(age, "You graduated with a ${completed.label} degree!", LogKind.MILESTONE)
+                studied.copy(education = Education(level = completed), flags = studied.flags + flag)
+            } else {
+                studied.copy(education = edu.copy(yearsLeft = yearsLeft))
+            }
+        }
         return when {
-            age == 5 && state.education.level == EducationLevel.NONE -> {
+            age == 5 && edu.level == EducationLevel.NONE -> {
                 logs += LogEntry(age, "You started primary school.", LogKind.SCHOOL)
                 state.copy(education = Education(EducationLevel.PRIMARY))
             }
-            age == 14 && state.education.level == EducationLevel.PRIMARY -> {
+            age == 14 && edu.level == EducationLevel.PRIMARY -> {
                 logs += LogEntry(age, "You started high school.", LogKind.SCHOOL)
                 state.copy(education = Education(EducationLevel.SECONDARY))
             }
-            age == 18 && state.education.level == EducationLevel.SECONDARY && "hs_grad" !in state.flags -> {
+            age == 18 && edu.level == EducationLevel.SECONDARY && "hs_grad" !in state.flags -> {
                 logs += LogEntry(age, "You graduated high school!", LogKind.MILESTONE)
                 state.copy(flags = state.flags + "hs_grad")
             }
@@ -329,20 +458,87 @@ class LifeSimulationEngine {
         }
     }
 
+    // ---- Activity specials -------------------------------------------------
+
+    private fun handleSpecial(state: GameState, activity: Activity): Triple<GameState, List<LogEntry>, List<String>> =
+        when (activity.special) {
+            "find_job" -> tryFindJob(state).let { (s, log, msg) -> Triple(s, listOf(log), listOf(msg)) }
+            "quit_job" -> {
+                val title = state.job?.title ?: "your job"
+                Triple(
+                    state.copy(job = null, jobYears = 0),
+                    listOf(LogEntry(state.age, "You quit your job as a $title.", LogKind.WORK)),
+                    listOf("You quit your job."),
+                )
+            }
+            "enroll_university" -> enroll(state, EducationLevel.UNIVERSITY, years = 4)
+            "enroll_grad" -> enroll(state, EducationLevel.GRADUATE, years = 2)
+            "date" -> goOnDate(state)
+            "adopt_pet" -> {
+                val s = applyEffects(state, listOf(Effect.AddPerson(RelationType.PET, 70), happy(4)))
+                val pet = s.relationships.last()
+                Triple(s, listOf(LogEntry(s.age, "You adopted ${pet.name}.", LogKind.RELATIONSHIP)), listOf("You adopted ${pet.name}!"))
+            }
+            else -> {
+                val logs = if (activity.logText.isNotBlank()) listOf(LogEntry(state.age, activity.logText, activity.logKind)) else emptyList()
+                Triple(state, logs, emptyList())
+            }
+        }
+
+    private fun enroll(state: GameState, target: EducationLevel, years: Int): Triple<GameState, List<LogEntry>, List<String>> {
+        val s = state.copy(education = state.education.copy(enrolledIn = target, yearsLeft = years))
+        return Triple(
+            s,
+            listOf(LogEntry(state.age, "You enrolled in ${target.label}.", LogKind.SCHOOL)),
+            listOf("You enrolled in ${target.label}."),
+        )
+    }
+
+    private fun goOnDate(state: GameState): Triple<GameState, List<LogEntry>, List<String>> {
+        val existing = state.relationships.firstOrNull {
+            it.alive && (it.relation == RelationType.PARTNER || it.relation == RelationType.SPOUSE)
+        }
+        if (existing != null) {
+            val s = applyEffects(state, listOf(Effect.RelationshipDelta(8, personId = existing.id), happy(3)))
+            return Triple(s, listOf(LogEntry(s.age, "You had a lovely date with ${existing.name}.", LogKind.RELATIONSHIP)), listOf("A lovely evening with ${existing.name}."))
+        }
+        val rng = rngFor(state.rngSeed, state.age, "date-${state.log.size}")
+        val chance = (0.4 + state.character.stats.looks / 250.0).coerceAtMost(0.85)
+        return if (rng.nextDouble() < chance) {
+            val s = applyEffects(state, listOf(Effect.AddPerson(RelationType.PARTNER, 55), happy(5), Effect.AddFlag("dating")))
+            val partner = s.relationships.last { it.relation == RelationType.PARTNER }
+            Triple(s, listOf(LogEntry(s.age, "You hit it off with ${partner.name} — you're seeing each other now.", LogKind.RELATIONSHIP)), listOf("You met ${partner.name}!"))
+        } else {
+            Triple(state, listOf(LogEntry(state.age, "The date didn't lead anywhere this time.", LogKind.RELATIONSHIP)), listOf("No spark this time."))
+        }
+    }
+
     private fun tryFindJob(state: GameState): Triple<GameState, LogEntry, String> {
         val rng = rngFor(state.rngSeed, state.age, "jobhunt")
         val smarts = state.character.stats.smarts
-        val eligible = JobCatalog.eligible(state.age, smarts)
+        val eligible = JobCatalog.eligible(state.age, smarts, state.education.level)
         if (eligible.isEmpty()) {
             return Triple(state, LogEntry(state.age, "You looked for work but weren't qualified for anything yet.", LogKind.WORK), "No jobs you qualify for yet.")
         }
         val chance = (0.35 + smarts / 200.0).coerceAtMost(0.9)
         return if (rng.nextDouble() < chance) {
-            val job = eligible.random(rng)
-            Triple(state.copy(job = job), LogEntry(state.age, "You were hired as a ${job.title}!", LogKind.WORK), "Hired as a ${job.title}!")
+            val job = weightedJob(eligible, rng)
+            Triple(state.copy(job = job, jobYears = 0), LogEntry(state.age, "You were hired as a ${job.title}!", LogKind.WORK), "Hired as a ${job.title}!")
         } else {
             Triple(state, LogEntry(state.age, "You applied around but got no offers this year.", LogKind.WORK), "No offers this year.")
         }
+    }
+
+    /** Pick a job weighted by salary, so the qualified tend to land the better roles. */
+    private fun weightedJob(eligible: List<com.azizjonkasimov.lifesimulator.domain.model.Job>, rng: Random): com.azizjonkasimov.lifesimulator.domain.model.Job {
+        val total = eligible.sumOf { it.salaryPerYear.toDouble() }
+        if (total <= 0.0) return eligible.random(rng)
+        var roll = rng.nextDouble() * total
+        for (job in eligible) {
+            roll -= job.salaryPerYear
+            if (roll < 0) return job
+        }
+        return eligible.last()
     }
 
     private fun checkHealthDeath(state: GameState): GameState {
@@ -396,6 +592,9 @@ class LifeSimulationEngine {
         else -> LogKind.EVENT
     }
 
+    private fun happy(amount: Int) = Effect.StatDelta(Stat.HAPPINESS, amount)
+    private fun cashE(amount: Int) = Effect.MoneyDelta(amount)
+
     private fun rngFor(seed: Long, age: Int, salt: String): Random {
         var hash = seed
         hash = hash * 1_000_003L + age
@@ -407,5 +606,8 @@ class LifeSimulationEngine {
 
     private companion object {
         const val ACCIDENT_CHANCE = 0.0008
+        const val GIFT_COST = 100
+        const val UNI_TUITION = 4000
+        const val GRAD_TUITION = 8000
     }
 }

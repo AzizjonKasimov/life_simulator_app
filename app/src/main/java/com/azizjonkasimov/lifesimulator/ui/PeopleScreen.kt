@@ -15,21 +15,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.azizjonkasimov.lifesimulator.domain.engine.InteractionOption
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.Person
+import com.azizjonkasimov.lifesimulator.domain.model.RelationType
 
-private val interactions = listOf(
-    "spend_time" to "Spend time",
-    "compliment" to "Compliment",
-    "insult" to "Insult",
+// Living people are grouped so the ones you act on most sit at the top.
+private val relationOrder = listOf(
+    RelationType.SPOUSE, RelationType.PARTNER, RelationType.CHILD,
+    RelationType.MOTHER, RelationType.FATHER, RelationType.SIBLING,
+    RelationType.FRIEND, RelationType.COWORKER, RelationType.PET,
 )
 
 @Composable
 fun PeopleScreen(
     state: GameState,
+    interactionsFor: (Person) -> List<InteractionOption>,
     onInteract: (String, String) -> Unit,
 ) {
     val living = state.relationships.filter { it.alive }
+        .sortedBy { relationOrder.indexOf(it.relation).let { i -> if (i < 0) Int.MAX_VALUE else i } }
     val gone = state.relationships.filter { !it.alive }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -44,7 +49,9 @@ fun PeopleScreen(
                 )
             }
         }
-        items(living) { person -> PersonCard(person = person, onInteract = onInteract) }
+        items(living) { person ->
+            PersonCard(person = person, interactions = interactionsFor(person), onInteract = onInteract)
+        }
         if (gone.isNotEmpty()) {
             item {
                 Text(
@@ -61,6 +68,7 @@ fun PeopleScreen(
 @Composable
 private fun PersonCard(
     person: Person,
+    interactions: List<InteractionOption>,
     onInteract: (String, String) -> Unit,
 ) {
     SectionCard(title = person.name, icon = UiIcons.person) {
@@ -85,9 +93,12 @@ private fun PersonCard(
             MeterLine(progress = person.relationship / 100f, color = meterColor(person.relationship))
         }
         ChipFlowRow {
-            interactions.forEach { (id, label) ->
-                OutlinedButton(onClick = { onInteract(person.id, id) }) {
-                    Text(text = label, style = MaterialTheme.typography.labelLarge)
+            interactions.forEach { option ->
+                OutlinedButton(
+                    onClick = { onInteract(person.id, option.id) },
+                    enabled = option.enabled,
+                ) {
+                    Text(text = option.label, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }

@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
+import com.azizjonkasimov.lifesimulator.domain.model.RelationType
 import com.azizjonkasimov.lifesimulator.domain.model.Stat
 
 @Composable
@@ -29,13 +30,23 @@ fun ProfileScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
+            val spouse = state.relationships.firstOrNull { it.alive && it.relation == RelationType.SPOUSE }
+            val partner = state.relationships.firstOrNull { it.alive && it.relation == RelationType.PARTNER }
+            val children = state.relationships.count { it.alive && it.relation == RelationType.CHILD }
+            val family = when {
+                spouse != null -> "Married to ${spouse.name}"
+                partner != null -> "Dating ${partner.name}"
+                else -> "Single"
+            }
             SectionCard(title = "Character", icon = UiIcons.person) {
                 InfoRow("Name", state.character.name)
                 InfoRow("Gender", state.character.gender.label)
                 InfoRow("Born", state.character.birthplace)
                 InfoRow("Age", "${state.age} · ${state.stage.label}")
-                InfoRow("Education", state.education.level.label)
+                InfoRow("Education", state.education.summary)
                 InfoRow("Job", state.job?.let { "${it.title} · ${money(it.salaryPerYear)}/yr" } ?: "Unemployed")
+                InfoRow("Relationship", family)
+                if (children > 0) InfoRow("Children", "$children")
                 InfoRow("Money", money(state.character.money))
             }
         }

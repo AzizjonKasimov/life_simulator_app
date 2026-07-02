@@ -17,6 +17,11 @@ private fun looks(a: Int) = Effect.StatDelta(Stat.LOOKS, a)
 private fun cash(a: Int) = Effect.MoneyDelta(a)
 private fun rel(type: RelationType, a: Int) = Effect.RelationshipDelta(amount = a, relation = type)
 private fun flag(f: String) = Effect.AddFlag(f)
+private fun addPerson(type: RelationType, relationship: Int = 60) = Effect.AddPerson(type, relationship)
+private fun leave(type: RelationType) = Effect.RemovePeople(type)
+private val marry = Effect.PromoteRelation(RelationType.PARTNER, RelationType.SPOUSE)
+private val promoteJob = Effect.PromoteJob
+private val loseJob = Effect.LoseJob
 
 private val CHILDHOOD = setOf(LifeStage.INFANT, LifeStage.CHILD)
 private val CHILD = setOf(LifeStage.CHILD)
@@ -25,7 +30,25 @@ private val YOUNG = setOf(LifeStage.YOUNG_ADULT)
 private val ADULT = setOf(LifeStage.ADULT)
 private val SENIOR = setOf(LifeStage.SENIOR)
 private val WORKING = setOf(LifeStage.YOUNG_ADULT, LifeStage.ADULT)
+private val GROWN = setOf(LifeStage.YOUNG_ADULT, LifeStage.ADULT, LifeStage.SENIOR)
 private val employed: (GameState) -> Boolean = { it.job != null }
+
+// Relationship-state conditions --------------------------------------------
+private fun alive(p: com.azizjonkasimov.lifesimulator.domain.model.Person) = p.alive
+private val single: (GameState) -> Boolean =
+    { st -> st.relationships.none { alive(it) && (it.relation == RelationType.PARTNER || it.relation == RelationType.SPOUSE) } }
+private val hasPartner: (GameState) -> Boolean =
+    { st -> st.relationships.any { alive(it) && it.relation == RelationType.PARTNER } }
+private val hasSpouse: (GameState) -> Boolean =
+    { st -> st.relationships.any { alive(it) && it.relation == RelationType.SPOUSE } }
+private val partnered: (GameState) -> Boolean =
+    { st -> st.relationships.any { alive(it) && (it.relation == RelationType.PARTNER || it.relation == RelationType.SPOUSE) } }
+private val hasChild: (GameState) -> Boolean =
+    { st -> st.relationships.any { alive(it) && it.relation == RelationType.CHILD } }
+private val hasFriend: (GameState) -> Boolean =
+    { st -> st.relationships.any { alive(it) && it.relation == RelationType.FRIEND } }
+private val inUniversity: (GameState) -> Boolean = { it.education.isEnrolled }
+private fun both(a: (GameState) -> Boolean, b: (GameState) -> Boolean): (GameState) -> Boolean = { a(it) && b(it) }
 
 object EventCatalog {
     val all: List<LifeEvent> = listOf(
@@ -363,6 +386,626 @@ object EventCatalog {
                 EventChoice("Just relax", "Rest was exactly what you needed.", listOf(happy(2), health(1))),
             ),
         ),
+
+        // ==== Romance & dating =========================================
+        LifeEvent(
+            id = "meet_someone",
+            category = EventCategory.ROMANCE,
+            prompt = "You've met someone who makes your heart race.",
+            stages = GROWN,
+            minAge = 16,
+            oneShot = false,
+            weight = 13,
+            condition = single,
+            choices = listOf(
+                EventChoice("Ask them out", "They said yes. You're seeing each other now.", listOf(addPerson(RelationType.PARTNER, 55), flag("dating"), happy(6))),
+                EventChoice("Lose your nerve", "Maybe next time, you told yourself.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "blind_date",
+            category = EventCategory.ROMANCE,
+            prompt = "A friend sets you up on a blind date.",
+            stages = WORKING,
+            minAge = 18,
+            oneShot = false,
+            weight = 7,
+            condition = single,
+            choices = listOf(
+                EventChoice("Give them a chance", "Against the odds, it clicked.", listOf(addPerson(RelationType.PARTNER, 52), flag("dating"), happy(5))),
+                EventChoice("Not your type", "You parted as friends.", listOf(happy(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "getting_serious",
+            category = EventCategory.ROMANCE,
+            prompt = "Things with your partner are getting serious. They suggest moving in together.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 9,
+            condition = both(hasPartner) { "moved_in" !in it.flags },
+            choices = listOf(
+                EventChoice("Move in together", "A big step — and a happy one.", listOf(flag("moved_in"), rel(RelationType.PARTNER, 8), happy(5))),
+                EventChoice("Take it slow", "No rush, you agreed.", listOf(happy(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "partner_proposes",
+            category = EventCategory.ROMANCE,
+            prompt = "Your partner gets down on one knee and proposes.",
+            stages = GROWN,
+            minAge = 20,
+            oneShot = false,
+            weight = 10,
+            condition = both(hasPartner) { "married" !in it.flags && it.relationships.any { p -> p.relation == RelationType.PARTNER && p.relationship >= 50 } },
+            choices = listOf(
+                EventChoice("Say yes!", "You're getting married!", listOf(marry, flag("married"), happy(14))),
+                EventChoice("You're not ready", "It was an awkward, painful moment.", listOf(rel(RelationType.PARTNER, -15), happy(-4))),
+            ),
+        ),
+        LifeEvent(
+            id = "meet_the_parents",
+            category = EventCategory.ROMANCE,
+            prompt = "Your partner wants you to meet their parents.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 6,
+            condition = hasPartner,
+            choices = listOf(
+                EventChoice("Charm them", "They adored you.", listOf(rel(RelationType.PARTNER, 6), happy(3))),
+                EventChoice("Fumble it", "It was painfully awkward.", listOf(rel(RelationType.PARTNER, -3), happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "partner_argument",
+            category = EventCategory.ROMANCE,
+            prompt = "You and your partner have a nasty argument.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 8,
+            condition = partnered,
+            choices = listOf(
+                EventChoice("Apologize first", "Swallowing your pride paid off.", listOf(rel(RelationType.PARTNER, 5), rel(RelationType.SPOUSE, 5), happy(-1))),
+                EventChoice("Talk it through", "You both came out closer.", listOf(rel(RelationType.PARTNER, 7), rel(RelationType.SPOUSE, 7), smarts(1))),
+                EventChoice("Give the silent treatment", "It festered for weeks.", listOf(rel(RelationType.PARTNER, -8), rel(RelationType.SPOUSE, -8), happy(-3))),
+            ),
+        ),
+        LifeEvent(
+            id = "long_distance",
+            category = EventCategory.ROMANCE,
+            prompt = "Your partner has to move away for a while.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 5,
+            condition = hasPartner,
+            choices = listOf(
+                EventChoice("Make it work", "Distance was hard, but love held.", listOf(rel(RelationType.PARTNER, 4), happy(-2))),
+                EventChoice("End it", "You parted ways.", listOf(leave(RelationType.PARTNER), happy(-6))),
+            ),
+        ),
+        LifeEvent(
+            id = "ex_returns",
+            category = EventCategory.ROMANCE,
+            prompt = "An old flame reappears and wants to rekindle things.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 4,
+            condition = single,
+            choices = listOf(
+                EventChoice("Give it another go", "You're seeing each other again.", listOf(addPerson(RelationType.PARTNER, 50), flag("dating"), happy(4))),
+                EventChoice("That ship has sailed", "You've grown past it.", listOf(smarts(1), happy(1))),
+            ),
+        ),
+
+        // ==== Marriage & children ======================================
+        flavour("wedding_day", EventCategory.ROMANCE, "You had a beautiful wedding surrounded by loved ones.", listOf(happy(8), cash(-6000), rel(RelationType.SPOUSE, 5)), stages = GROWN, condition = hasSpouse),
+        LifeEvent(
+            id = "want_kids",
+            category = EventCategory.FAMILY,
+            prompt = "You and your spouse talk about starting a family.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 8,
+            condition = both(hasSpouse) { it.relationships.count { p -> p.relation == RelationType.CHILD } < 4 },
+            choices = listOf(
+                EventChoice("Have a child", "Your family is growing.", listOf(addPerson(RelationType.CHILD, 85), happy(8))),
+                EventChoice("Not yet", "You decided to wait.", listOf(happy(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "surprise_pregnancy",
+            category = EventCategory.FAMILY,
+            prompt = "A surprise: a baby is on the way.",
+            stages = GROWN,
+            minAge = 20,
+            oneShot = false,
+            weight = 5,
+            condition = both(partnered) { it.relationships.count { p -> p.relation == RelationType.CHILD } < 4 },
+            choices = listOf(
+                EventChoice("Overjoyed", "You welcomed a new child with open arms.", listOf(addPerson(RelationType.CHILD, 85), happy(7), cash(-1500))),
+                EventChoice("Overwhelmed", "Ready or not, your child arrived.", listOf(addPerson(RelationType.CHILD, 80), happy(1), cash(-1500))),
+            ),
+        ),
+        LifeEvent(
+            id = "child_first_word",
+            category = EventCategory.FAMILY,
+            prompt = "Your child said their first word.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 6,
+            condition = hasChild,
+            choices = listOf(EventChoice("Treasure it", "A moment you'll never forget.", listOf(happy(5), rel(RelationType.CHILD, 3)))),
+        ),
+        LifeEvent(
+            id = "child_school_trouble",
+            category = EventCategory.FAMILY,
+            prompt = "Your child is struggling at school.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 6,
+            condition = hasChild,
+            choices = listOf(
+                EventChoice("Help every night", "Slow going, but they improved.", listOf(rel(RelationType.CHILD, 6), happy(-1))),
+                EventChoice("Hire a tutor", "Money well spent.", listOf(cash(-800), rel(RelationType.CHILD, 5))),
+                EventChoice("Let them sort it out", "They felt unsupported.", listOf(rel(RelationType.CHILD, -5))),
+            ),
+        ),
+        LifeEvent(
+            id = "child_rebellion",
+            category = EventCategory.FAMILY,
+            prompt = "Your teenager is acting out.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 5,
+            condition = hasChild,
+            choices = listOf(
+                EventChoice("Come down hard", "They resented the rules.", listOf(rel(RelationType.CHILD, -6), happy(-2))),
+                EventChoice("Hear them out", "Patience won them back.", listOf(rel(RelationType.CHILD, 7), happy(1))),
+            ),
+        ),
+        flavour("child_graduation", EventCategory.FAMILY, "Your child graduated — you couldn't be prouder.", listOf(happy(7), rel(RelationType.CHILD, 5)), stages = setOf(LifeStage.ADULT, LifeStage.SENIOR), condition = hasChild),
+        LifeEvent(
+            id = "child_college_tuition",
+            category = EventCategory.MONEY,
+            prompt = "Your child got into university, but it's expensive.",
+            stages = setOf(LifeStage.ADULT, LifeStage.SENIOR),
+            oneShot = true,
+            weight = 6,
+            condition = hasChild,
+            choices = listOf(
+                EventChoice("Pay their way", "A gift they'll never forget.", listOf(cash(-16000), rel(RelationType.CHILD, 10), happy(2))),
+                EventChoice("They'll take loans", "They understood, mostly.", listOf(rel(RelationType.CHILD, -4))),
+            ),
+        ),
+        LifeEvent(
+            id = "anniversary",
+            category = EventCategory.ROMANCE,
+            prompt = "It's your wedding anniversary.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 6,
+            condition = hasSpouse,
+            choices = listOf(
+                EventChoice("Plan something special", "A night to remember.", listOf(cash(-500), rel(RelationType.SPOUSE, 6), happy(4))),
+                EventChoice("Let it slip your mind", "That went over badly.", listOf(rel(RelationType.SPOUSE, -8), happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "marriage_rough_patch",
+            category = EventCategory.ROMANCE,
+            prompt = "Your marriage has hit a rough patch.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 5,
+            condition = hasSpouse,
+            choices = listOf(
+                EventChoice("Try counseling", "It helped you find each other again.", listOf(cash(-600), rel(RelationType.SPOUSE, 8))),
+                EventChoice("Let it drift", "The distance grew.", listOf(rel(RelationType.SPOUSE, -10), happy(-3))),
+            ),
+        ),
+        LifeEvent(
+            id = "divorce_papers",
+            category = EventCategory.ROMANCE,
+            prompt = "The marriage has become unbearable.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 3,
+            condition = both(hasSpouse) { it.relationships.any { p -> p.relation == RelationType.SPOUSE && p.relationship < 35 } },
+            choices = listOf(
+                EventChoice("Work to save it", "You chose to fight for it.", listOf(rel(RelationType.SPOUSE, 6), happy(-2))),
+                EventChoice("File for divorce", "It was painful, but final.", listOf(leave(RelationType.SPOUSE), cash(-4000), happy(-6))),
+            ),
+        ),
+
+        // ==== University ===============================================
+        flavour("uni_roommate", EventCategory.SCHOOL, "You and your college roommate became close friends.", listOf(happy(4), addPerson(RelationType.FRIEND, 55)), condition = inUniversity, oneShot = true),
+        LifeEvent(
+            id = "uni_exam_week",
+            category = EventCategory.SCHOOL,
+            prompt = "Finals week is here and you're behind.",
+            oneShot = false,
+            weight = 8,
+            condition = inUniversity,
+            choices = listOf(
+                EventChoice("Pull all-nighters", "You aced them, but you're exhausted.", listOf(smarts(4), health(-3))),
+                EventChoice("Cram and hope", "You scraped by with energy to spare.", listOf(smarts(1), happy(2))),
+            ),
+        ),
+        LifeEvent(
+            id = "uni_internship",
+            category = EventCategory.SCHOOL,
+            prompt = "You're offered a summer internship in your field.",
+            oneShot = true,
+            weight = 9,
+            condition = inUniversity,
+            choices = listOf(
+                EventChoice("Take the internship", "Real experience — and a paycheck.", listOf(cash(4000), smarts(3), flag("internship"))),
+                EventChoice("Enjoy your summer", "You recharged instead.", listOf(happy(5))),
+            ),
+        ),
+        LifeEvent(
+            id = "uni_study_abroad",
+            category = EventCategory.SCHOOL,
+            prompt = "There's a chance to study abroad for a semester.",
+            oneShot = true,
+            weight = 6,
+            condition = inUniversity,
+            choices = listOf(
+                EventChoice("Go for it", "A life-changing experience.", listOf(cash(-3000), happy(7), smarts(3), looks(1))),
+                EventChoice("Stay put", "You kept your head down.", listOf(smarts(1))),
+            ),
+        ),
+        flavour("uni_club", EventCategory.SCHOOL, "You joined a campus club and found your people.", listOf(happy(4), smarts(1)), condition = inUniversity, oneShot = false, weight = 5),
+
+        // ==== Career & work ============================================
+        LifeEvent(
+            id = "impress_boss",
+            category = EventCategory.WORK,
+            prompt = "There's a chance to lead a high-stakes project.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 7,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Go above and beyond", "It paid off — you climbed the ladder.", listOf(promoteJob, happy(-1))),
+                EventChoice("Keep a balance", "You protected your evenings.", listOf(happy(3))),
+            ),
+        ),
+        LifeEvent(
+            id = "raise_request",
+            category = EventCategory.WORK,
+            prompt = "You feel you're due for a raise.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 6,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Make your case", "They agreed to a bonus.", listOf(cash(3000), smarts(1))),
+                EventChoice("Don't rock the boat", "You let it be.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "headhunted",
+            category = EventCategory.WORK,
+            prompt = "A rival company offers you a better position.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 5,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Jump ship", "A fresh start and a bigger title.", listOf(promoteJob, happy(3))),
+                EventChoice("Stay loyal", "Your team respected the loyalty.", listOf(happy(2), smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "layoffs",
+            category = EventCategory.WORK,
+            prompt = "Layoffs are sweeping through your company.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 5,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Take the severance", "A clean break, with a cushion.", listOf(loseJob, cash(6000), happy(-3))),
+                EventChoice("Keep your head down", "You survived the cut — barely.", listOf(happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "costly_mistake",
+            category = EventCategory.WORK,
+            prompt = "You've made a costly mistake at work.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 4,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Own up to it", "Honesty saved your job.", listOf(smarts(1), happy(-2))),
+                EventChoice("Try to hide it", "It came out — and cost you the job.", listOf(loseJob, happy(-5))),
+            ),
+        ),
+        LifeEvent(
+            id = "office_romance",
+            category = EventCategory.ROMANCE,
+            prompt = "A coworker has been flirting with you.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 5,
+            condition = both(employed, single),
+            choices = listOf(
+                EventChoice("Pursue it", "Office gossip aside, you're together.", listOf(addPerson(RelationType.PARTNER, 55), flag("dating"), happy(4))),
+                EventChoice("Keep it professional", "Better to keep work and love apart.", listOf(smarts(1))),
+            ),
+        ),
+        flavour("work_award", EventCategory.WORK, "You won an award for your work.", listOf(happy(5), smarts(1)), stages = WORKING, condition = employed, oneShot = false, weight = 4),
+        LifeEvent(
+            id = "overtime_crunch",
+            category = EventCategory.WORK,
+            prompt = "Your team is drowning in a deadline.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 6,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Grind it out", "The bonus was nice; the toll was real.", listOf(cash(2000), health(-2), happy(-2))),
+                EventChoice("Protect your health", "You set boundaries.", listOf(happy(2))),
+            ),
+        ),
+        LifeEvent(
+            id = "career_change",
+            category = EventCategory.WORK,
+            prompt = "You're burned out on your whole career.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 3,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Quit and reinvent", "Terrifying — and freeing.", listOf(loseJob, happy(5), cash(-1000))),
+                EventChoice("Stick with it", "The devil you know.", listOf(happy(-2), cash(1000))),
+            ),
+        ),
+
+        // ==== Health ===================================================
+        LifeEvent(
+            id = "sports_injury",
+            category = EventCategory.HEALTH,
+            prompt = "You take a hard hit playing sports.",
+            stages = setOf(LifeStage.TEEN, LifeStage.YOUNG_ADULT),
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Rest and recover", "Boring, but you healed right.", listOf(health(3), happy(-1))),
+                EventChoice("Play through it", "Tough — and a little reckless.", listOf(health(-4), happy(2))),
+            ),
+        ),
+        flavour("annual_checkup", EventCategory.HEALTH, "A clean bill of health at your check-up.", listOf(health(2)), stages = WORKING, oneShot = false, weight = 5),
+        flavour("food_poisoning", EventCategory.HEALTH, "A dodgy meal left you sick for days.", listOf(health(-4), happy(-1)), minAge = 5, oneShot = false, weight = 4),
+        LifeEvent(
+            id = "back_pain",
+            category = EventCategory.HEALTH,
+            prompt = "Chronic back pain is wearing you down.",
+            stages = setOf(LifeStage.ADULT, LifeStage.SENIOR),
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Start physiotherapy", "Slow, steady relief.", listOf(cash(-400), health(4))),
+                EventChoice("Grit your teeth", "It only got worse.", listOf(health(-3), happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "mental_health",
+            category = EventCategory.HEALTH,
+            prompt = "You've been feeling low for a long time.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("See a therapist", "Talking it out helped more than you expected.", listOf(cash(-500), happy(7))),
+                EventChoice("Bottle it up", "It quietly ate at you.", listOf(happy(-5))),
+            ),
+        ),
+        LifeEvent(
+            id = "health_scare",
+            category = EventCategory.HEALTH,
+            prompt = "A scary test result comes back.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Overhaul your lifestyle", "You took it as a wake-up call.", listOf(health(6), happy(-1))),
+                EventChoice("Live in denial", "You buried your head in the sand.", listOf(health(-5))),
+            ),
+        ),
+
+        // ==== Money ====================================================
+        flavour("bonus_windfall", EventCategory.MONEY, "A surprise year-end bonus landed in your account.", listOf(cash(2500), happy(2)), stages = WORKING, condition = employed, oneShot = false, weight = 5),
+        flavour("tax_return", EventCategory.MONEY, "Your tax return came back bigger than expected.", listOf(cash(1200)), stages = WORKING, oneShot = false, weight = 5),
+        flavour("inheritance_small", EventCategory.MONEY, "A distant relative left you a small sum.", listOf(cash(3000)), stages = GROWN, oneShot = false, weight = 3),
+        LifeEvent(
+            id = "car_purchase",
+            category = EventCategory.MONEY,
+            prompt = "Your old car is dying. Time for a new one?",
+            stages = WORKING,
+            minAge = 18,
+            oneShot = true,
+            weight = 6,
+            condition = { "car" !in it.flags },
+            choices = listOf(
+                EventChoice("Buy new", "That new-car smell is priceless.", listOf(cash(-18000), happy(6), flag("car"))),
+                EventChoice("Buy a used one", "Reliable and easy on the wallet.", listOf(cash(-6000), happy(3), flag("car"))),
+                EventChoice("Keep repairing the old one", "You babied it along another year.", listOf(cash(-400), happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "side_hustle",
+            category = EventCategory.MONEY,
+            prompt = "You have an idea for a side hustle.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Grind on it", "Extra cash, less sleep.", listOf(cash(3500), health(-2), happy(-1))),
+                EventChoice("Keep your free time", "You valued the rest more.", listOf(happy(3))),
+            ),
+        ),
+        LifeEvent(
+            id = "phone_upgrade",
+            category = EventCategory.MONEY,
+            prompt = "The latest phone just dropped.",
+            stages = setOf(LifeStage.TEEN, LifeStage.YOUNG_ADULT),
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Splurge", "Shiny and new.", listOf(cash(-1000), happy(3))),
+                EventChoice("Keep your old one", "It still works fine.", listOf(happy(-1))),
+            ),
+        ),
+
+        // ==== Crime ====================================================
+        LifeEvent(
+            id = "tempted_to_steal",
+            category = EventCategory.CRIME,
+            prompt = "You could pocket something expensive when no one's looking.",
+            stages = setOf(LifeStage.TEEN, LifeStage.YOUNG_ADULT),
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Take it", "You got away — this time.", listOf(cash(120), flag("thief"), happy(-1))),
+                EventChoice("Walk away", "Your conscience stayed clean.", listOf(smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "bar_fight",
+            category = EventCategory.CRIME,
+            prompt = "A stranger squares up to you at a bar.",
+            stages = YOUNG,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Walk it off", "No sense in a brawl.", listOf(smarts(1))),
+                EventChoice("Throw a punch", "You won, but bruised.", listOf(health(-3), flag("brawler"), happy(1))),
+            ),
+        ),
+        flavour("speeding_again", EventCategory.CRIME, "Another speeding ticket for the collection.", listOf(cash(-150), happy(-1)), stages = WORKING, minAge = 18, oneShot = false, weight = 3),
+        LifeEvent(
+            id = "shady_offer",
+            category = EventCategory.CRIME,
+            prompt = "Someone offers you easy money to look the other way.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 3,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Take the money", "Easy cash, uneasy conscience.", listOf(cash(4000), flag("corrupt"), happy(-2))),
+                EventChoice("Refuse", "You kept your integrity.", listOf(smarts(2), happy(1))),
+            ),
+        ),
+        flavour("jury_duty", EventCategory.RANDOM, "You were called for jury duty.", listOf(smarts(1), happy(-1)), stages = WORKING, oneShot = false, weight = 3),
+
+        // ==== Friends & life ===========================================
+        LifeEvent(
+            id = "made_a_friend",
+            category = EventCategory.FAMILY,
+            prompt = "You really hit it off with someone new.",
+            minAge = 6,
+            oneShot = false,
+            weight = 8,
+            choices = listOf(
+                EventChoice("Become close friends", "A friendship for the ages.", listOf(addPerson(RelationType.FRIEND, 55), happy(4))),
+                EventChoice("Stay acquaintances", "Friendly, but distant.", listOf(happy(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "friend_drifts",
+            category = EventCategory.FAMILY,
+            prompt = "You and an old friend have been drifting apart.",
+            oneShot = false,
+            weight = 5,
+            condition = hasFriend,
+            choices = listOf(
+                EventChoice("Reach out", "You picked up right where you left off.", listOf(rel(RelationType.FRIEND, 8), happy(2))),
+                EventChoice("Let it fade", "Some friendships just end.", listOf(rel(RelationType.FRIEND, -15), happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "midlife_crisis",
+            category = EventCategory.RANDOM,
+            prompt = "You wake up questioning everything.",
+            stages = ADULT,
+            minAge = 40,
+            oneShot = true,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Buy the motorcycle", "Reckless, thrilling, alive.", listOf(cash(-9000), happy(6), health(-1))),
+                EventChoice("Pick up a new passion", "You found meaning in something new.", listOf(happy(4), smarts(2))),
+            ),
+        ),
+        LifeEvent(
+            id = "class_reunion",
+            category = EventCategory.RANDOM,
+            prompt = "Your school reunion invitation arrives.",
+            stages = setOf(LifeStage.ADULT, LifeStage.SENIOR),
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Go and reconnect", "Old faces, warm memories.", listOf(happy(4), rel(RelationType.FRIEND, 4))),
+                EventChoice("Skip it", "You weren't in the mood.", listOf(happy(-1))),
+            ),
+        ),
+        flavour("learned_language", EventCategory.RANDOM, "You picked up a new language.", listOf(smarts(2), happy(2)), minAge = 10, oneShot = false, weight = 4),
+        LifeEvent(
+            id = "ran_marathon",
+            category = EventCategory.HEALTH,
+            prompt = "You signed up to run a marathon.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Train and finish", "You crossed that line on top of the world.", listOf(health(5), happy(5))),
+                EventChoice("Give up halfway", "The training fizzled out.", listOf(happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "natural_disaster",
+            category = EventCategory.RANDOM,
+            prompt = "A storm batters your area.",
+            oneShot = false,
+            weight = 3,
+            minAge = 8,
+            choices = listOf(
+                EventChoice("Help your neighbors", "The community pulled together.", listOf(happy(4), addPerson(RelationType.FRIEND, 45))),
+                EventChoice("Hunker down", "You rode it out safely.", listOf(happy(-1))),
+            ),
+        ),
+        flavour("spiritual_awakening", EventCategory.RANDOM, "A quiet moment gave you real clarity.", listOf(happy(4), smarts(1)), stages = GROWN, oneShot = false, weight = 3),
+
+        // ==== Senior ===================================================
+        LifeEvent(
+            id = "senior_travel",
+            category = EventCategory.RANDOM,
+            prompt = "You've always wanted to see the world.",
+            stages = SENIOR,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Take the trip", "The adventure of your golden years.", listOf(cash(-4000), happy(8), health(2))),
+                EventChoice("Stay comfortable", "Home has its comforts.", listOf(happy(-1))),
+            ),
+        ),
+        flavour("old_friend_passes", EventCategory.FAMILY, "An old friend passed away. You felt the years.", listOf(happy(-4), health(-1)), stages = SENIOR, oneShot = false, weight = 4),
+        flavour("share_wisdom", EventCategory.RANDOM, "A young person sought out your advice.", listOf(happy(4), smarts(1)), stages = SENIOR, oneShot = false, weight = 5),
+        LifeEvent(
+            id = "health_decline",
+            category = EventCategory.HEALTH,
+            prompt = "Your body isn't what it used to be.",
+            stages = SENIOR,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Fight to stay strong", "You clawed back some vitality.", listOf(cash(-1000), health(5))),
+                EventChoice("Make peace with it", "You focused on what you had.", listOf(health(-3), happy(3))),
+            ),
+        ),
+        flavour("reflect_on_life", EventCategory.RANDOM, "You spent the year reflecting on a life well lived.", listOf(happy(5)), stages = SENIOR, oneShot = false, weight = 4),
     )
 
     private val byId: Map<String, LifeEvent> = all.associateBy { it.id }

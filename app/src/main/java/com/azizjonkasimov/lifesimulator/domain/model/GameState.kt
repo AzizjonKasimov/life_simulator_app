@@ -51,6 +51,8 @@ data class GameState(
     val log: List<LogEntry>,
     val alive: Boolean = true,
     val causeOfDeath: String? = null,
+    /** Years spent at the current job rung; feeds promotion cadence. Resets on any job change. */
+    val jobYears: Int = 0,
 ) {
     val age: Int get() = character.age
     val stage: LifeStage get() = LifeStage.forAge(character.age)

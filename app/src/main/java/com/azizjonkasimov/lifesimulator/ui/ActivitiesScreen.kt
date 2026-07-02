@@ -10,12 +10,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.Nightlife
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -94,7 +98,12 @@ private fun activityIcon(id: String): ImageVector = when (id) {
     "study" -> Icons.Filled.School
     "doctor" -> Icons.Filled.LocalHospital
     "meditate" -> Icons.Filled.SelfImprovement
+    "volunteer" -> Icons.Filled.VolunteerActivism
     "night_out" -> Icons.Filled.Nightlife
-    "find_job" -> Icons.Filled.Work
+    "vacation" -> Icons.Filled.FlightTakeoff
+    "date" -> Icons.Filled.Favorite
+    "adopt_pet" -> Icons.Filled.Pets
+    "enroll_university", "enroll_grad" -> Icons.Filled.School
+    "find_job", "quit_job" -> Icons.Filled.Work
     else -> Icons.Filled.Star
 }

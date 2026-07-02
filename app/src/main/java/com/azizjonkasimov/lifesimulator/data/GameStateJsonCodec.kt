@@ -27,8 +27,9 @@ object GameStateJsonCodec {
         .put("schemaVersion", SCHEMA_VERSION)
         .put("character", state.character.toJson())
         .put("relationships", JSONArray().apply { state.relationships.forEach { put(it.toJson()) } })
-        .put("education", state.education.level.name)
+        .put("education", state.education.toJson())
         .put("job", state.job?.toJson() ?: JSONObject.NULL)
+        .put("jobYears", state.jobYears)
         .put("flags", state.flags.toJsonArray())
         .put("eventsSeen", state.eventsSeen.toJsonArray())
         .put("pendingEventIds", state.pendingEventIds.toJsonArray())
@@ -44,8 +45,9 @@ object GameStateJsonCodec {
         return GameState(
             character = root.getJSONObject("character").toCharacter(),
             relationships = root.getJSONArray("relationships").map { it.toPerson() },
-            education = Education(enumOrDefault(root.getString("education"), EducationLevel.NONE)),
+            education = decodeEducation(root),
             job = if (root.isNull("job")) null else root.getJSONObject("job").toJob(),
+            jobYears = root.optInt("jobYears", 0),
             flags = root.getJSONArray("flags").toStringSet(),
             eventsSeen = root.getJSONArray("eventsSeen").toStringSet(),
             pendingEventIds = root.getJSONArray("pendingEventIds").toStringList(),
@@ -84,6 +86,30 @@ object GameStateJsonCodec {
         )
     }
 
+    // ---- Education ---------------------------------------------------------
+
+    private fun Education.toJson(): JSONObject = JSONObject()
+        .put("level", level.name)
+        .put("enrolledIn", enrolledIn?.name ?: JSONObject.NULL)
+        .put("yearsLeft", yearsLeft)
+
+    private fun decodeEducation(root: JSONObject): Education {
+        val obj = root.optJSONObject("education")
+        if (obj != null) {
+            return Education(
+                level = enumOrDefault(obj.optString("level", EducationLevel.NONE.name), EducationLevel.NONE),
+                enrolledIn = if (obj.isNull("enrolledIn")) {
+                    null
+                } else {
+                    runCatching { enumValueOf<EducationLevel>(obj.getString("enrolledIn")) }.getOrNull()
+                },
+                yearsLeft = obj.optInt("yearsLeft", 0),
+            )
+        }
+        // Legacy (v0.10.0 schema-6): education was stored as a bare level string.
+        return Education(enumOrDefault(root.optString("education", EducationLevel.NONE.name), EducationLevel.NONE))
+    }
+
     private fun Person.toJson(): JSONObject = JSONObject()
         .put("id", id)
         .put("name", name)
@@ -106,16 +132,20 @@ object GameStateJsonCodec {
         .put("title", title)
         .put("field", field.name)
         .put("salaryPerYear", salaryPerYear)
+        .put("level", level)
         .put("minAge", minAge)
         .put("minSmarts", minSmarts)
+        .put("requiresDegree", requiresDegree)
 
     private fun JSONObject.toJob(): Job = Job(
         id = getString("id"),
         title = getString("title"),
         field = enumOrDefault(getString("field"), JobField.SERVICE),
         salaryPerYear = getInt("salaryPerYear"),
+        level = optInt("level", 1),
         minAge = optInt("minAge", 18),
         minSmarts = optInt("minSmarts", 0),
+        requiresDegree = optBoolean("requiresDegree", false),
     )
 
     private fun LogEntry.toJson(): JSONObject = JSONObject()

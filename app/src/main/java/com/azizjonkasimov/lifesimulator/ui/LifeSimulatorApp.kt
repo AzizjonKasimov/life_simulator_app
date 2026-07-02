@@ -178,7 +178,11 @@ private fun ActiveGameScreen(
                         activities = uiState.activities,
                         onActivity = viewModel::doActivity,
                     )
-                    GameTab.PEOPLE -> PeopleScreen(state = state, onInteract = viewModel::interact)
+                    GameTab.PEOPLE -> PeopleScreen(
+                        state = state,
+                        interactionsFor = viewModel::interactionsFor,
+                        onInteract = viewModel::interact,
+                    )
                     GameTab.PROFILE -> ProfileScreen(
                         state = state,
                         currentVersionLabel = currentVersionLabel,
