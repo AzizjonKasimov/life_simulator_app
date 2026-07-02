@@ -2,15 +2,21 @@ package com.azizjonkasimov.lifesimulator.data
 
 import com.azizjonkasimov.lifesimulator.domain.engine.JobCatalog
 import com.azizjonkasimov.lifesimulator.domain.engine.LifeSimulationEngine
+import com.azizjonkasimov.lifesimulator.domain.model.Ailment
+import com.azizjonkasimov.lifesimulator.domain.model.Asset
+import com.azizjonkasimov.lifesimulator.domain.model.AssetKind
 import com.azizjonkasimov.lifesimulator.domain.model.Education
 import com.azizjonkasimov.lifesimulator.domain.model.EducationLevel
 import com.azizjonkasimov.lifesimulator.domain.model.Gender
 import com.azizjonkasimov.lifesimulator.domain.model.Job
 import com.azizjonkasimov.lifesimulator.domain.model.JobField
 import com.azizjonkasimov.lifesimulator.domain.model.Person
+import com.azizjonkasimov.lifesimulator.domain.model.Prison
 import com.azizjonkasimov.lifesimulator.domain.model.RelationType
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GameStateJsonCodecTest {
@@ -64,5 +70,35 @@ class GameStateJsonCodecTest {
         val decoded = GameStateJsonCodec.decode(json.toString())
         assertEquals(EducationLevel.SECONDARY, decoded.education.level)
         assertEquals(0, decoded.jobYears)
+    }
+
+    @Test
+    fun roundTrip_preservesM3State() {
+        val base = engine.startNewLife("Deep Life", Gender.MALE)
+        val state = base.copy(
+            ailments = listOf(
+                Ailment("diabetes", "Type 2 Diabetes", severity = 2, chronic = true),
+                Ailment("bad_cold", "Bad Cold", severity = 1, chronic = false, yearsLeft = 1),
+            ),
+            prison = Prison(sentence = 3, served = 1),
+            assets = listOf(Asset("house_0", "Family House", AssetKind.PROPERTY, value = 270_000)),
+            traits = setOf("genius", "lucky"),
+            achievements = setOf("scholar", "homeowner"),
+        )
+        val decoded = GameStateJsonCodec.decode(GameStateJsonCodec.encode(state))
+        assertEquals(state, decoded)
+    }
+
+    @Test
+    fun decode_toleratesMissingM3Fields() {
+        // A v0.11.0 (schema 6) blob predates the health/crime/asset/trait/achievement fields.
+        val json = JSONObject(GameStateJsonCodec.encode(engine.startNewLife("Old Save", Gender.FEMALE)))
+        listOf("ailments", "prison", "assets", "traits", "achievements").forEach { json.remove(it) }
+        val decoded = GameStateJsonCodec.decode(json.toString())
+        assertTrue(decoded.ailments.isEmpty())
+        assertNull(decoded.prison)
+        assertTrue(decoded.assets.isEmpty())
+        assertTrue(decoded.traits.isEmpty())
+        assertTrue(decoded.achievements.isEmpty())
     }
 }

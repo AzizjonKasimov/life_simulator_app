@@ -1,9 +1,12 @@
 package com.azizjonkasimov.lifesimulator.domain.engine
 
+import com.azizjonkasimov.lifesimulator.domain.model.Ailment
+import com.azizjonkasimov.lifesimulator.domain.model.AssetKind
 import com.azizjonkasimov.lifesimulator.domain.model.Education
 import com.azizjonkasimov.lifesimulator.domain.model.EducationLevel
 import com.azizjonkasimov.lifesimulator.domain.model.Gender
 import com.azizjonkasimov.lifesimulator.domain.model.Person
+import com.azizjonkasimov.lifesimulator.domain.model.Prison
 import com.azizjonkasimov.lifesimulator.domain.model.RelationType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -148,5 +151,94 @@ class LifeSimulationEngineTest {
 
         val withDegree = JobCatalog.eligible(age = 30, smarts = 95, education = EducationLevel.UNIVERSITY)
         assertTrue(withDegree.any { it.requiresDegree })
+    }
+
+    // ---- M3: health, crime, assets, traits, achievements ------------------
+
+    @Test
+    fun illness_acuteClears_chronicPersists() {
+        // Run it inside prison: the event pool is prison-only and illness onset is
+        // paused there, so ailment changes come solely from year-over-year progression.
+        val base = engine.startNewLife("Patient", Gender.FEMALE)
+        val state = base.copy(
+            character = base.character.copy(age = 40, stats = base.character.stats.copy(health = 80)),
+            prison = Prison(sentence = 5, served = 0),
+            ailments = listOf(
+                Ailment("bad_cold", "Bad Cold", severity = 1, chronic = false, yearsLeft = 1),
+                Ailment("diabetes", "Type 2 Diabetes", severity = 2, chronic = true),
+            ),
+        )
+        val after = engine.ageUp(state).state
+        assertTrue("a chronic condition persists", after.ailments.any { it.id == "diabetes" })
+        assertFalse("an acute condition clears", after.ailments.any { it.id == "bad_cold" })
+    }
+
+    @Test
+    fun treatment_onlyOfferedWhenIll() {
+        val well = engine.startNewLife("Well", Gender.MALE).let { it.copy(character = it.character.copy(age = 30)) }
+        assertFalse(engine.availableActivities(well).any { it.activity.id == "treatment" })
+        val sick = well.copy(ailments = listOf(Ailment("asthma", "Asthma", severity = 1, chronic = true)))
+        assertTrue(engine.availableActivities(sick).any { it.activity.id == "treatment" })
+    }
+
+    @Test
+    fun jailEvent_imprisonsLosesJobAndBlocksWork() {
+        val base = engine.startNewLife("Con", Gender.MALE)
+        val state = base.copy(
+            character = base.character.copy(age = 30),
+            job = JobCatalog.career("developer")!!.entryJob(),
+            pendingEventIds = listOf("drunk_driving"),
+        )
+        val jailed = engine.resolveEvent(state, "drunk_driving", 0).state
+        assertNotNull("a sentence was handed down", jailed.prison)
+        assertNull("the job is lost on imprisonment", jailed.job)
+        assertTrue(jailed.inPrison)
+        assertFalse("normal activities are blocked inside", engine.doActivity(jailed, "gym").success)
+        assertTrue(
+            "only prison activities are offered",
+            engine.availableActivities(jailed).all { it.activity.category == ActivityCategory.PRISON },
+        )
+    }
+
+    @Test
+    fun prison_releasedAfterServingSentence() {
+        val base = engine.startNewLife("Free", Gender.FEMALE)
+        val state = base.copy(
+            character = base.character.copy(age = 30),
+            prison = Prison(sentence = 1, served = 0),
+        )
+        val after = engine.ageUp(state).state
+        assertNull("released after serving the sentence", after.prison)
+        assertTrue("ex_convict" in after.flags)
+    }
+
+    @Test
+    fun buyingAHouse_addsAssetLowersCashAndUnlocksAchievement() {
+        val base = engine.startNewLife("Owner", Gender.MALE)
+        val state = base.copy(character = base.character.copy(age = 30, money = 500_000))
+        val result = engine.doActivity(state, "buy_house")
+        assertTrue(result.success)
+        val s = result.state
+        assertTrue(s.assets.any { it.kind == AssetKind.PROPERTY })
+        assertEquals(200_000, s.character.money)
+        assertTrue("net worth counts the asset", s.netWorth > s.character.money)
+        assertTrue("homeowner" in s.achievements)
+    }
+
+    @Test
+    fun startNewLife_rollsValidTraits() {
+        val state = engine.startNewLife("Trait", Gender.FEMALE)
+        assertTrue(state.traits.isNotEmpty())
+        assertTrue(state.traits.all { TraitCatalog.byId(it) != null })
+    }
+
+    @Test
+    fun maxingSmarts_unlocksScholarAchievement() {
+        val base = engine.startNewLife("Brainy", Gender.MALE)
+        val state = base.copy(
+            character = base.character.copy(age = 20, stats = base.character.stats.copy(smarts = 100, happiness = 50)),
+        )
+        val after = engine.doActivity(state, "meditate").state
+        assertTrue("scholar" in after.achievements)
     }
 }

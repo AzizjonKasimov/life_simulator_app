@@ -33,6 +33,16 @@ sealed interface Effect {
     data object PromoteJob : Effect
     /** Lose your job (fired or laid off). */
     data object LoseJob : Effect
+    /** Contract a health condition by its [HealthCatalog] id. */
+    data class AddAilment(val id: String) : Effect
+    /** Clear every active health condition — a clean bill of health. */
+    data object CureAilments : Effect
+    /** Go to prison for [years]. Ends any job. */
+    data class Imprison(val years: Int) : Effect
+    /** Walk free. */
+    data object Release : Effect
+    /** Acquire an asset by its [AssetCatalog] spec id (value/happiness from the spec). */
+    data class AddAsset(val id: String) : Effect
 }
 
 data class EventChoice(
@@ -57,6 +67,8 @@ data class LifeEvent(
     val weight: Int = 10,
     val oneShot: Boolean = true,
     val condition: (GameState) -> Boolean = { true },
+    /** Prison events fire only while incarcerated; everything else only while free. */
+    val prisonOnly: Boolean = false,
 ) {
     val interactive: Boolean get() = choices.size >= 2
 }

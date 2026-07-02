@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.azizjonkasimov.lifesimulator.domain.engine.AchievementCatalog
 import com.azizjonkasimov.lifesimulator.domain.model.GameState
 import com.azizjonkasimov.lifesimulator.domain.model.LogKind
 import com.azizjonkasimov.lifesimulator.domain.model.Stat
@@ -54,12 +56,21 @@ fun LegacyScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                text = "Final wealth: ${money(state.character.money)} · People known: $knownPeople",
+                text = "Net worth: ${money(state.netWorth)} · People known: $knownPeople",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Stat.entries.forEach { stat ->
                 StatBar(stat = stat, value = state.character.stats.get(stat))
+            }
+        }
+
+        val earned = AchievementCatalog.all.filter { it.id in state.achievements }
+        if (earned.isNotEmpty()) {
+            SectionCard(title = "Achievements (${earned.size})", icon = Icons.Filled.EmojiEvents) {
+                ChipFlowRow {
+                    earned.forEach { LabelChip(text = it.name, icon = Icons.Filled.EmojiEvents, tone = ChipTone.ACCENT) }
+                }
             }
         }
 
