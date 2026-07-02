@@ -4,11 +4,11 @@ A personal Android life simulator game in the BitLife tradition: you're born as 
 
 ## Status
 
-**M2 (breadth) of a BitLife-style rebuild.** You're born somewhere in the real world with four core stats — Happiness, Health, Smarts, Looks — and each **Age Up** lives one year: your stats drift, seeded life events happen and ask you to choose, and you can spend the year on activities or time with the people in your life. Grow up, go to university, build a career with promotions, fall in love, marry, raise children, and grow old — until you die and get a legacy summary. Every gamble is seeded, so a given life replays identically.
+**M3 (depth) of a BitLife-style rebuild.** You're born somewhere in the real world with four core stats — Happiness, Health, Smarts, Looks — and each **Age Up** lives one year: your stats drift, seeded life events happen and ask you to choose, and you can spend the year on activities or time with the people in your life. Grow up, go to university, build a career with promotions, fall in love, marry, raise children, weather illness and the odd brush with the law, and grow old — until you die and get a legacy summary. Every gamble is seeded, so a given life replays identically.
 
 > This replaces the v0.1–v0.9 **finance** simulator (grow-your-net-worth), which lives on in git history and the released `0.9.x` APKs. The full design for the life sim — systems, content plan, and roadmap — is in [docs/DESIGN.md](docs/DESIGN.md).
 
-M2 adds: university and graduate degrees, 21 careers with promotion ladders, romance → marriage → children, more activities (dating, vacations, adopting a pet), contextual relationship interactions, and ~106 authored events (up from ~50). Save fields were added backward-compatibly, so an existing life carries across the update. M3 (depth: health/illness, crime + jail, assets, achievements, 200+ events) is laid out in the design doc.
+M3 adds depth on top of M2's breadth: a **health/illness** system (chronic and acute conditions that drain your health, with treatment to fight back), **crime & prison** (seeded heists with real risk, getting caught, and serving time that puts your life on hold), **assets** (cars, homes, and luxuries that build your net worth), personality **traits** rolled at birth, **achievements**, richer relationship interactions, and **200+ authored events** (up from ~106). All new save fields are additive, so an existing life carries straight across the update. The one remaining, optional M3 piece — generations (playing on as your child when you die) — is laid out in the design doc.
 
 ## Product Direction
 
@@ -65,7 +65,7 @@ Release signing uses local, gitignored files:
 Create `keystore.properties` from `keystore.properties.example`, keep both files private, and back them up. Publish a release with:
 
 ```powershell
-.\release.ps1 -VersionName 0.11.0 -VersionCode 13 -Notes "M2 breadth: university and degrees, 21 careers with promotions, romance to marriage to children, more activities, and ~106 life events."
+.\release.ps1 -VersionName 0.12.0 -VersionCode 14 -Notes "M3 depth: health and illness, crime and prison, assets and net worth, personality traits, achievements, and 200+ life events."
 ```
 
 The script bumps the version, builds a signed APK, publishes `LifeSimulator-<version>.apk` to `AzizjonKasimov/life-simulator-app-releases`, and updates `version.json` for the in-app updater. The version bump in this repo is left uncommitted for review.
@@ -76,17 +76,23 @@ You're born as a baby — a random name (or one you choose), a gender, a birthpl
 
 Each **Age Up** advances one year: stats drift with age (health and looks fade later in life; the young grow into themselves), any salary is paid, education milestones land, the people in your life age (and can pass away), a death check runs, and one to three **seeded life events** fire. Flavour events simply happen; real decisions pop up and ask you to choose, with consequences that ripple through the rest of the life. Between years you can spend the year on **activities** or with **people**.
 
-**Stats.** Happiness, Health, Smarts, and Looks (0–100) are pushed by events, activities, and age. If Health hits zero, the life ends.
+**Stats.** Happiness, Health, Smarts, and Looks (0–100) are pushed by events, activities, age, illness, and your inborn traits. If Health hits zero, the life ends.
 
 **Life stages.** Infant → Child → Teen → Young Adult → Adult → Senior gate which events can fire and what you can do — from playground scrapes and school dances to careers, houses, and grandchildren.
 
-**People.** Parents and siblings to start; over a life you make friends, meet partners, marry, and have children — each a real person with a name, an age, and a relationship meter. From the People tab you can spend time, converse, compliment, gift, propose, start a family, ask for money, or fall out — the interactions offered depend on who they are to you.
+**People.** Parents and siblings to start; over a life you make friends, meet partners, marry, and have children — each a real person with a name, an age, and a relationship meter. From the People tab you can spend time, converse, compliment, gift, take a trip, ask for advice, propose, start a family, ask for money, or fall out — the interactions offered depend on who they are to you.
 
 **Work & school.** School and graduation happen on their own; from 16+ you can take a part-time job. After high school you can enrol in **university** (and grad school) for a degree that unlocks better careers. Jobs sit on a ladder of 21 careers — you're hired by a seeded, smarts-weighted roll, then climb through **promotions** driven by your Smarts and years of tenure, with work events (raises, layoffs, being headhunted or fired) along the way.
 
-**Money.** A light layer for now — salary in, event and activity costs out. It's one system among many, not the scoreboard.
+**Money & assets.** A light layer — salary in, event and activity costs out, plus **assets** you can buy (cars, homes, luxuries) that build your **net worth**. It's one system among many, not the scoreboard.
 
-**Risk & luck.** Event selection, job hunts, and mortality all flow from one save seed, so a given life replays identically.
+**Health & illness.** Beyond the Health stat, you can pick up **conditions** — acute ones that clear on their own and chronic ones that quietly drain you each year until you seek **treatment**. They arrive more often as you age.
+
+**Crime & justice.** From the Activities tab you can attempt crimes for a seeded payoff — but get caught and you'll serve a **prison** sentence that pauses your career and schooling and leaves you with a record.
+
+**Traits & achievements.** You're born with personality **traits** that colour your life, and you rack up **achievements** for milestones — both shown on your Profile and in your legacy.
+
+**Risk & luck.** Event selection, job hunts, illness, crime, and mortality all flow from one save seed, so a given life replays identically.
 
 **Death & legacy.** Every life ends — by age, health, or misfortune — with a legacy screen recapping your years, final stats, wealth, and notable moments, then the option to start a new life.
 

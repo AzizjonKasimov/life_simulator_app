@@ -22,6 +22,10 @@ private fun leave(type: RelationType) = Effect.RemovePeople(type)
 private val marry = Effect.PromoteRelation(RelationType.PARTNER, RelationType.SPOUSE)
 private val promoteJob = Effect.PromoteJob
 private val loseJob = Effect.LoseJob
+private fun ail(id: String) = Effect.AddAilment(id)
+private val cured = Effect.CureAilments
+private fun jail(years: Int) = Effect.Imprison(years)
+private fun acquire(id: String) = Effect.AddAsset(id)
 
 private val CHILDHOOD = setOf(LifeStage.INFANT, LifeStage.CHILD)
 private val CHILD = setOf(LifeStage.CHILD)
@@ -49,6 +53,9 @@ private val hasFriend: (GameState) -> Boolean =
     { st -> st.relationships.any { alive(it) && it.relation == RelationType.FRIEND } }
 private val inUniversity: (GameState) -> Boolean = { it.education.isEnrolled }
 private fun both(a: (GameState) -> Boolean, b: (GameState) -> Boolean): (GameState) -> Boolean = { a(it) && b(it) }
+private fun hasTrait(id: String): (GameState) -> Boolean = { id in it.traits }
+private fun without(ailmentId: String): (GameState) -> Boolean = { st -> st.ailments.none { it.id == ailmentId } }
+private val healthy: (GameState) -> Boolean = { it.ailments.isEmpty() }
 
 object EventCatalog {
     val all: List<LifeEvent> = listOf(
@@ -1006,18 +1013,774 @@ object EventCatalog {
             ),
         ),
         flavour("reflect_on_life", EventCategory.RANDOM, "You spent the year reflecting on a life well lived.", listOf(happy(5)), stages = SENIOR, oneShot = false, weight = 4),
+
+        // ==== M3: Prison (fire only while incarcerated) ================
+        LifeEvent(
+            id = "prison_fight",
+            category = EventCategory.CRIME,
+            prompt = "Another inmate squares up to you in the yard.",
+            prisonOnly = true,
+            oneShot = false,
+            weight = 8,
+            choices = listOf(
+                EventChoice("Stand your ground", "You held your own — and earned some respect.", listOf(health(-4), happy(2), flag("hardened"))),
+                EventChoice("Back down", "You swallowed your pride to stay safe.", listOf(happy(-3))),
+            ),
+        ),
+        LifeEvent(
+            id = "prison_parole",
+            category = EventCategory.CRIME,
+            prompt = "You're up for a parole hearing.",
+            prisonOnly = true,
+            oneShot = false,
+            weight = 6,
+            choices = listOf(
+                EventChoice("Plead your case", "Parole granted — you walk free.", listOf(Effect.Release, happy(8))),
+                EventChoice("Say nothing", "You'll serve out your time.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "prison_class",
+            category = EventCategory.SCHOOL,
+            prompt = "The prison offers education classes.",
+            prisonOnly = true,
+            oneShot = false,
+            weight = 7,
+            choices = listOf(
+                EventChoice("Enroll", "You used the time to better yourself.", listOf(smarts(3), happy(2))),
+                EventChoice("Skip them", "You let the hours slip by.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "prison_gang",
+            category = EventCategory.CRIME,
+            prompt = "A prison faction wants you to join for protection.",
+            prisonOnly = true,
+            oneShot = false,
+            weight = 6,
+            choices = listOf(
+                EventChoice("Join them", "Safer, but you're in deeper now.", listOf(flag("gang"), happy(1), health(-1))),
+                EventChoice("Stay independent", "You kept your own counsel.", listOf(smarts(1), happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "prison_mentor",
+            category = EventCategory.FAMILY,
+            prompt = "An older inmate takes you under his wing.",
+            prisonOnly = true,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Listen and learn", "His hard-won wisdom stuck with you.", listOf(smarts(2), happy(2))),
+                EventChoice("Keep to yourself", "You did your time alone.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "prison_riot",
+            category = EventCategory.CRIME,
+            prompt = "A riot erupts in the cell block.",
+            prisonOnly = true,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Wait it out", "You stayed clear of the worst.", listOf(health(-1))),
+                EventChoice("Get involved", "You came through it bruised.", listOf(health(-5), happy(1), flag("hardened"))),
+            ),
+        ),
+        flavour("prison_visit", EventCategory.FAMILY, "A loved one made the long trip to visit you inside.", listOf(happy(4)), prisonOnly = true, oneShot = false, weight = 6),
+        flavour("prison_lonely", EventCategory.HEALTH, "The isolation of prison wore on you.", listOf(happy(-3)), prisonOnly = true, oneShot = false, weight = 6),
+        flavour("prison_gym", EventCategory.HEALTH, "You spent your days lifting weights in the yard.", listOf(health(2)), prisonOnly = true, oneShot = false, weight = 5),
+        flavour("prison_reflect", EventCategory.RANDOM, "Behind bars, you did a lot of thinking about your choices.", listOf(smarts(1)), prisonOnly = true, oneShot = false, weight = 5),
+
+        // ==== M3: Illness & health system ==============================
+        LifeEvent(
+            id = "early_diagnosis",
+            category = EventCategory.HEALTH,
+            prompt = "A check-up turns up the early warning signs of diabetes.",
+            stages = GROWN,
+            minAge = 35,
+            oneShot = false,
+            weight = 6,
+            condition = without("diabetes"),
+            choices = listOf(
+                EventChoice("Change your habits now", "You got ahead of it.", listOf(health(3), happy(-1))),
+                EventChoice("Brush it off", "You'll deal with it later — or so you thought.", listOf(ail("diabetes"))),
+            ),
+        ),
+        LifeEvent(
+            id = "persistent_cough",
+            category = EventCategory.HEALTH,
+            prompt = "A cough has lingered for months.",
+            stages = setOf(LifeStage.ADULT, LifeStage.SENIOR),
+            minAge = 45,
+            oneShot = false,
+            weight = 5,
+            condition = without("copd"),
+            choices = listOf(
+                EventChoice("Get it checked", "Caught early, it was manageable.", listOf(health(1), cash(-200))),
+                EventChoice("Ignore it", "It settled into something chronic.", listOf(ail("copd"))),
+            ),
+        ),
+        LifeEvent(
+            id = "feeling_hollow",
+            category = EventCategory.HEALTH,
+            prompt = "You've felt hollow and low for a long stretch.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 6,
+            condition = without("depression"),
+            choices = listOf(
+                EventChoice("Reach out for help", "Talking to someone lifted the fog.", listOf(happy(4))),
+                EventChoice("Keep it inside", "It quietly took root.", listOf(ail("depression"), happy(-3))),
+            ),
+        ),
+        LifeEvent(
+            id = "lump_scare",
+            category = EventCategory.HEALTH,
+            prompt = "You find a lump and fear the worst.",
+            stages = GROWN,
+            minAge = 30,
+            oneShot = false,
+            weight = 4,
+            condition = without("cancer"),
+            choices = listOf(
+                EventChoice("See a specialist now", "A scare, but you caught it in time.", listOf(cash(-500), health(1))),
+                EventChoice("Wait and see", "The delay let it grow.", listOf(ail("cancer"))),
+            ),
+        ),
+        LifeEvent(
+            id = "experimental_cure",
+            category = EventCategory.HEALTH,
+            prompt = "A new treatment could clear your condition — for a price.",
+            oneShot = false,
+            weight = 6,
+            condition = { it.ailments.isNotEmpty() },
+            choices = listOf(
+                EventChoice("Pay for it", "The treatment worked — you're in the clear.", listOf(cash(-5000), cured)),
+                EventChoice("Can't justify the cost", "You'll keep managing on your own.", listOf(happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "chronic_support",
+            category = EventCategory.HEALTH,
+            prompt = "Living with a chronic condition is wearing you down.",
+            oneShot = false,
+            weight = 5,
+            condition = { st -> st.ailments.any { it.chronic } },
+            choices = listOf(
+                EventChoice("Join a support group", "Others who understood made it lighter.", listOf(happy(4))),
+                EventChoice("Go it alone", "The weight of it grew heavier.", listOf(happy(-3))),
+            ),
+        ),
+        LifeEvent(
+            id = "quit_bad_habit",
+            category = EventCategory.HEALTH,
+            prompt = "You've been meaning to kick a bad habit.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Quit for good", "Hard, but your body thanked you.", listOf(health(4), happy(-1), flag("clean_living"))),
+                EventChoice("Not this year", "The habit kept its grip.", listOf(health(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "dental_work",
+            category = EventCategory.HEALTH,
+            prompt = "Your teeth need serious work.",
+            stages = GROWN,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Get it fixed", "Pricey, but your smile came back.", listOf(cash(-1200), looks(2), health(1))),
+                EventChoice("Live with it", "You winced through the year.", listOf(happy(-1), looks(-1))),
+            ),
+        ),
+        flavour("flu_season", EventCategory.HEALTH, "A brutal flu swept through and knocked you down.", listOf(ail("bad_cold")), minAge = 3, oneShot = false, weight = 5),
+        flavour("bad_fall", EventCategory.HEALTH, "You slipped badly and broke a bone.", listOf(ail("broken_bone")), minAge = 6, oneShot = false, weight = 4),
+        flavour("clean_bill", EventCategory.HEALTH, "A year of clean living did your body real good.", listOf(health(4)), stages = GROWN, oneShot = false, weight = 5, condition = healthy),
+        flavour("blood_donor", EventCategory.HEALTH, "You became a regular blood donor.", listOf(happy(2), smarts(1)), minAge = 18, oneShot = false, weight = 3),
+
+        // ==== M3: Crime & legal (fixed-consequence choices) ============
+        LifeEvent(
+            id = "heist_offer",
+            category = EventCategory.CRIME,
+            prompt = "An old contact offers you a cut of a robbery.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Get involved", "Easy money — but you're in the life now.", listOf(cash(5000), flag("criminal"), happy(1))),
+                EventChoice("Walk away", "Not worth what it would cost you.", listOf(smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "drunk_driving",
+            category = EventCategory.CRIME,
+            prompt = "You've had a few drinks, but your car is right there.",
+            stages = GROWN,
+            minAge = 18,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Risk the drive", "You were pulled over and arrested for a DUI.", listOf(jail(1), happy(-4))),
+                EventChoice("Call a cab", "The smart call cost you a little cash.", listOf(cash(-40))),
+            ),
+        ),
+        LifeEvent(
+            id = "bar_brawl2",
+            category = EventCategory.CRIME,
+            prompt = "A shoving match at a bar turns ugly.",
+            stages = GROWN,
+            minAge = 18,
+            oneShot = false,
+            weight = 3,
+            choices = listOf(
+                EventChoice("Throw the first punch", "You were arrested for assault.", listOf(jail(1), happy(-2))),
+                EventChoice("Walk it off", "You kept your cool and your record.", listOf(smarts(1), happy(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "tax_fraud",
+            category = EventCategory.CRIME,
+            prompt = "You could quietly fudge your taxes for a fat refund.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 4,
+            condition = employed,
+            choices = listOf(
+                EventChoice("Cheat the system", "The refund landed — so did the risk.", listOf(cash(3000), flag("corrupt"))),
+                EventChoice("File honestly", "You slept easy.", listOf(smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "witness_mugging",
+            category = EventCategory.CRIME,
+            prompt = "You witness a mugging on your street.",
+            minAge = 12,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Step in", "Reckless, but you helped.", listOf(health(-2), happy(3), flag("brave"))),
+                EventChoice("Call for help", "You did the sensible thing.", listOf(smarts(1))),
+                EventChoice("Look away", "It gnawed at your conscience.", listOf(happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "counterfeit_flip",
+            category = EventCategory.CRIME,
+            prompt = "Someone's selling knock-off goods cheap to resell.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 3,
+            choices = listOf(
+                EventChoice("Buy in to flip", "A tidy, shady little profit.", listOf(cash(2000), flag("criminal"))),
+                EventChoice("Not worth it", "You passed on the hustle.", listOf(smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "police_stop",
+            category = EventCategory.CRIME,
+            prompt = "Police stop and question you.",
+            minAge = 16,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Stay calm and cooperate", "It was over in minutes.", listOf(smarts(1))),
+                EventChoice("Get mouthy", "You made it worse than it needed to be.", listOf(happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "mall_shoplifting",
+            category = EventCategory.CRIME,
+            prompt = "Your friends are pocketing things at the mall.",
+            stages = TEEN,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Join in", "A cheap thrill and a guilty conscience.", listOf(cash(30), flag("shoplifted"), happy(1))),
+                EventChoice("Nope out", "You weren't about to risk it.", listOf(smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "underpass_tag",
+            category = EventCategory.CRIME,
+            prompt = "The crew wants to spray-paint the underpass.",
+            stages = TEEN,
+            oneShot = false,
+            weight = 3,
+            choices = listOf(
+                EventChoice("Grab a can", "Your art hit the wall — and stayed up.", listOf(happy(2), flag("vandal"))),
+                EventChoice("Head home", "You left them to it.", listOf(smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "insurance_scam",
+            category = EventCategory.CRIME,
+            prompt = "You could stage a claim for an easy payout.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 3,
+            choices = listOf(
+                EventChoice("Fake the claim", "The cheque cleared. So did your morals.", listOf(cash(4000), flag("corrupt"))),
+                EventChoice("Don't risk it", "You kept it clean.", listOf(smarts(1), happy(1))),
+            ),
+        ),
+
+        // ==== M3: Asset windfalls ======================================
+        flavour("inherited_home", EventCategory.MONEY, "A relative passed and left you their condo.", listOf(acquire("condo")), stages = setOf(LifeStage.ADULT, LifeStage.SENIOR), oneShot = true, weight = 4),
+        flavour("won_car", EventCategory.MONEY, "You won a car in a charity raffle!", listOf(acquire("used_car"), happy(3)), stages = WORKING, minAge = 18, oneShot = true, weight = 3),
+        flavour("gifted_watch", EventCategory.MONEY, "A wealthy relative gifted you a luxury watch.", listOf(acquire("watch"), happy(3)), stages = GROWN, minAge = 21, oneShot = true, weight = 2),
+
+        // ==== M3: Trait-flavoured ======================================
+        flavour("trait_genius_scholar", EventCategory.SCHOOL, "Your sharp mind won you a scholarship.", listOf(smarts(3), cash(2000)), minAge = 14, oneShot = false, weight = 5, condition = hasTrait("genius")),
+        flavour("trait_athletic_meet", EventCategory.HEALTH, "You dominated a local athletics meet.", listOf(health(3), happy(3)), minAge = 8, oneShot = false, weight = 5, condition = hasTrait("athletic")),
+        flavour("trait_charismatic_room", EventCategory.RANDOM, "Your charm won over a tough room.", listOf(happy(3), looks(1)), minAge = 10, oneShot = false, weight = 5, condition = hasTrait("charismatic")),
+        flavour("trait_kind_returned", EventCategory.RANDOM, "A stranger repaid a kindness you'd long forgotten.", listOf(happy(4)), minAge = 8, oneShot = false, weight = 5, condition = hasTrait("kind")),
+        flavour("trait_hot_headed_cost", EventCategory.FAMILY, "Your temper flared and cost you a friend.", listOf(rel(RelationType.FRIEND, -8), happy(-2)), oneShot = false, weight = 5, condition = both(hasTrait("hot_headed"), hasFriend)),
+        flavour("trait_frail_setback", EventCategory.HEALTH, "Your fragile health laid you up again.", listOf(health(-3)), minAge = 5, oneShot = false, weight = 5, condition = hasTrait("frail")),
+        flavour("trait_lucky_raffle", EventCategory.MONEY, "Lady Luck smiled — you won a raffle.", listOf(cash(1500), happy(2)), minAge = 8, oneShot = false, weight = 5, condition = hasTrait("lucky")),
+        LifeEvent(
+            id = "trait_ambitious_push",
+            category = EventCategory.WORK,
+            prompt = "Your ambition points you at a bold play at work.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 5,
+            condition = both(hasTrait("ambitious"), employed),
+            choices = listOf(
+                EventChoice("Gun for the top", "You clawed your way up a rung.", listOf(promoteJob, happy(-1))),
+                EventChoice("Steady as she goes", "You protected your peace.", listOf(happy(2))),
+            ),
+        ),
+        LifeEvent(
+            id = "trait_genius_invent",
+            category = EventCategory.MONEY,
+            prompt = "A clever idea of yours could actually become something.",
+            minAge = 25,
+            oneShot = false,
+            weight = 4,
+            condition = hasTrait("genius"),
+            choices = listOf(
+                EventChoice("Develop it", "It paid off in more ways than one.", listOf(cash(6000), smarts(2), happy(2))),
+                EventChoice("Let it go", "The idea faded away.", listOf(happy(-1))),
+            ),
+        ),
+
+        // ==== M3: Money ================================================
+        LifeEvent(
+            id = "lottery_windfall",
+            category = EventCategory.MONEY,
+            prompt = "Your scratch card is a big winner!",
+            minAge = 18,
+            oneShot = false,
+            weight = 3,
+            choices = listOf(
+                EventChoice("Take the cash", "A life-changing sum, just like that.", listOf(cash(50000), happy(5))),
+                EventChoice("Give most away", "You shared your luck around.", listOf(cash(5000), happy(7), flag("philanthropist"))),
+            ),
+        ),
+        LifeEvent(
+            id = "freelance_gig",
+            category = EventCategory.MONEY,
+            prompt = "A freelance gig lands in your lap.",
+            stages = WORKING,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Take it on", "Extra cash for extra hours.", listOf(cash(2500), health(-1))),
+                EventChoice("Pass — you're busy", "You chose your sanity.", listOf(happy(2))),
+            ),
+        ),
+        flavour("market_dip", EventCategory.MONEY, "A market downturn dented your savings.", listOf(cash(-2000)), stages = WORKING, oneShot = false, weight = 3),
+        flavour("unexpected_bill", EventCategory.MONEY, "An unexpected bill blindsided you.", listOf(cash(-800), happy(-1)), minAge = 18, oneShot = false, weight = 4),
+
+        // ==== M3: General breadth — childhood ==========================
+        LifeEvent(
+            id = "lemonade_stand",
+            category = EventCategory.MONEY,
+            prompt = "You set up a lemonade stand on the corner.",
+            stages = CHILD,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Hustle all summer", "Your first taste of enterprise.", listOf(cash(30), smarts(1), happy(1))),
+                EventChoice("Give it away free", "The neighborhood loved you for it.", listOf(happy(3), rel(RelationType.MOTHER, 1))),
+            ),
+        ),
+        LifeEvent(
+            id = "science_fair",
+            category = EventCategory.SCHOOL,
+            prompt = "It's the school science fair.",
+            stages = CHILD,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Go all out", "Your volcano stole the show.", listOf(smarts(3), happy(1))),
+                EventChoice("Phone it in", "You did the bare minimum.", listOf(happy(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "broke_window",
+            category = EventCategory.FAMILY,
+            prompt = "You broke a neighbor's window with a stray ball.",
+            stages = CHILD,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Own up to it", "Honesty earned you respect.", listOf(rel(RelationType.MOTHER, 2), smarts(1))),
+                EventChoice("Run and hide", "The guilt followed you home.", listOf(happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "class_clown",
+            category = EventCategory.SCHOOL,
+            prompt = "You could be the class clown this year.",
+            stages = CHILD,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Ham it up", "You had them rolling — and the teacher fuming.", listOf(happy(3), smarts(-1))),
+                EventChoice("Focus in class", "You kept your head in your books.", listOf(smarts(2))),
+            ),
+        ),
+        flavour("lost_tooth", EventCategory.FAMILY, "You lost a tooth, and the tooth fairy came through.", listOf(happy(2), cash(2)), stages = CHILD, oneShot = false, weight = 5),
+        flavour("summer_camp", EventCategory.FAMILY, "You went to summer camp and made memories.", listOf(happy(4), health(1)), stages = CHILD, oneShot = false, weight = 5),
+        flavour("learned_swim", EventCategory.HEALTH, "You finally learned to swim.", listOf(health(2), happy(2)), stages = CHILD, oneShot = false, weight = 4),
+        flavour("childhood_pet_passed", EventCategory.FAMILY, "A beloved childhood pet passed away.", listOf(happy(-4)), stages = CHILD, oneShot = false, weight = 3),
+
+        // ==== General breadth — teen ===================================
+        LifeEvent(
+            id = "driving_test",
+            category = EventCategory.RANDOM,
+            prompt = "It's time for your driving test.",
+            stages = TEEN,
+            minAge = 16,
+            oneShot = true,
+            weight = 6,
+            choices = listOf(
+                EventChoice("Nail it", "Licence in hand — freedom!", listOf(happy(4), flag("licensed"))),
+                EventChoice("Choke under pressure", "You'll try again next year.", listOf(happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "prom_night",
+            category = EventCategory.ROMANCE,
+            prompt = "Prom is coming up.",
+            stages = TEEN,
+            minAge = 16,
+            oneShot = true,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Go all out", "A night you'd remember for decades.", listOf(cash(-300), happy(6))),
+                EventChoice("Skip it", "You told yourself you didn't care.", listOf(happy(-2), cash(50))),
+            ),
+        ),
+        LifeEvent(
+            id = "peer_pressure",
+            category = EventCategory.FAMILY,
+            prompt = "Your friends pressure you to try something risky.",
+            stages = TEEN,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Give in", "It was a thrill you half-regretted.", listOf(happy(2), health(-3), flag("reckless"))),
+                EventChoice("Stand firm", "You held your line.", listOf(smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "part_time_gig",
+            category = EventCategory.MONEY,
+            prompt = "A neighbor offers you odd jobs for cash.",
+            stages = TEEN,
+            minAge = 15,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Take the work", "You earned your own money.", listOf(cash(600), happy(-1))),
+                EventChoice("Enjoy the summer", "You spent it with friends instead.", listOf(happy(2))),
+            ),
+        ),
+        LifeEvent(
+            id = "online_fame",
+            category = EventCategory.RANDOM,
+            prompt = "A post of yours starts going viral.",
+            stages = TEEN,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Chase the clout", "Fifteen minutes of fame.", listOf(happy(3), looks(1))),
+                EventChoice("Log off", "You kept your feet on the ground.", listOf(smarts(1), happy(1))),
+            ),
+        ),
+        flavour("first_heartbreak", EventCategory.ROMANCE, "Your first real heartbreak hit hard.", listOf(happy(-5)), stages = TEEN, oneShot = false, weight = 5, condition = single),
+        flavour("band_tryout", EventCategory.SCHOOL, "You joined the school band.", listOf(happy(3), smarts(1)), stages = TEEN, oneShot = false, weight = 4),
+        flavour("teen_detention", EventCategory.SCHOOL, "You landed yourself in detention.", listOf(happy(-2), smarts(1)), stages = TEEN, oneShot = false, weight = 3),
+
+        // ==== General breadth — young adult ============================
+        LifeEvent(
+            id = "first_apartment",
+            category = EventCategory.MONEY,
+            prompt = "You could finally move into your own place.",
+            stages = YOUNG,
+            minAge = 18,
+            oneShot = true,
+            weight = 6,
+            choices = listOf(
+                EventChoice("Get your own place", "Freedom — and rent.", listOf(cash(-2000), happy(5))),
+                EventChoice("Stay home to save", "Not glamorous, but sensible.", listOf(rel(RelationType.MOTHER, 2), cash(500))),
+            ),
+        ),
+        LifeEvent(
+            id = "backpacking",
+            category = EventCategory.RANDOM,
+            prompt = "Friends invite you backpacking abroad.",
+            stages = YOUNG,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("See the world", "You came back changed.", listOf(cash(-2500), happy(8), smarts(2))),
+                EventChoice("Stay and work", "You banked the money instead.", listOf(cash(1500))),
+            ),
+        ),
+        LifeEvent(
+            id = "roommate_trouble",
+            category = EventCategory.FAMILY,
+            prompt = "Your roommate stopped paying their share of the rent.",
+            stages = YOUNG,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Cover it, then talk", "You kept the peace, at a cost.", listOf(cash(-800), happy(-1))),
+                EventChoice("Kick them out", "Awkward, but fair.", listOf(happy(-2), smarts(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "startup_dream",
+            category = EventCategory.MONEY,
+            prompt = "You have an idea for a startup.",
+            stages = YOUNG,
+            minAge = 20,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Bet on yourself", "Terrifying, exhilarating, all-in.", listOf(cash(-3000), happy(2), smarts(2), flag("founder"))),
+                EventChoice("Play it safe", "Maybe someday.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "quarter_life",
+            category = EventCategory.RANDOM,
+            prompt = "You're questioning your whole path in life.",
+            stages = YOUNG,
+            minAge = 24,
+            oneShot = true,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Reinvent yourself", "You found a new direction.", listOf(happy(3), smarts(1))),
+                EventChoice("Push through", "You put your head down.", listOf(happy(-1))),
+            ),
+        ),
+        flavour("adopt_kitten", EventCategory.FAMILY, "You adopted a kitten from the shelter.", listOf(addPerson(RelationType.PET, 70), happy(4)), stages = YOUNG, oneShot = false, weight = 4),
+        flavour("networking_win", EventCategory.WORK, "A networking event opened new doors.", listOf(smarts(1), happy(1), addPerson(RelationType.FRIEND, 45)), stages = YOUNG, oneShot = false, weight = 4),
+        flavour("gym_habit", EventCategory.HEALTH, "You finally stuck to a gym routine.", listOf(health(3), looks(2)), stages = YOUNG, oneShot = false, weight = 4),
+
+        // ==== General breadth — adult ==================================
+        LifeEvent(
+            id = "neighbor_feud",
+            category = EventCategory.FAMILY,
+            prompt = "A feud with a neighbor is escalating.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Make peace", "You extended an olive branch.", listOf(happy(2), smarts(1))),
+                EventChoice("Dig in", "The cold war dragged on.", listOf(happy(-3))),
+            ),
+        ),
+        LifeEvent(
+            id = "home_renovation",
+            category = EventCategory.MONEY,
+            prompt = "Your home could use a renovation.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 4,
+            condition = { "homeowner" in it.flags },
+            choices = listOf(
+                EventChoice("Renovate", "The place feels new again.", listOf(cash(-8000), happy(4))),
+                EventChoice("Leave it", "You learned to live with the creaks.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "invest_market",
+            category = EventCategory.MONEY,
+            prompt = "A friend pushes you toward a hot investment.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Invest wisely", "A patient bet that paid off.", listOf(cash(2000), smarts(1))),
+                EventChoice("Chase the hype", "The fad fizzled and took your money.", listOf(cash(-3000), happy(-2))),
+            ),
+        ),
+        LifeEvent(
+            id = "parent_needs_care",
+            category = EventCategory.FAMILY,
+            prompt = "An aging parent needs care.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 5,
+            condition = { st -> st.relationships.any { (it.relation == RelationType.MOTHER || it.relation == RelationType.FATHER) && it.alive } },
+            choices = listOf(
+                EventChoice("Take them in", "Hard work, but the right thing.", listOf(cash(-2000), rel(RelationType.MOTHER, 8), rel(RelationType.FATHER, 8), happy(-1))),
+                EventChoice("Arrange care", "You made sure they were looked after.", listOf(cash(-4000), rel(RelationType.MOTHER, 3), rel(RelationType.FATHER, 3))),
+            ),
+        ),
+        LifeEvent(
+            id = "family_vacation",
+            category = EventCategory.FAMILY,
+            prompt = "The family is itching for a big vacation.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 5,
+            condition = hasChild,
+            choices = listOf(
+                EventChoice("Splurge on the trip", "Memories worth every penny.", listOf(cash(-4000), happy(6), rel(RelationType.CHILD, 4))),
+                EventChoice("Keep it modest", "A quieter break, but a break.", listOf(cash(-800), happy(2))),
+            ),
+        ),
+        LifeEvent(
+            id = "debt_trouble",
+            category = EventCategory.MONEY,
+            prompt = "The debts are piling up.",
+            stages = ADULT,
+            oneShot = false,
+            weight = 5,
+            condition = { it.character.money < 0 },
+            choices = listOf(
+                EventChoice("Buckle down", "You clawed your way back toward the black.", listOf(cash(1000), happy(-2))),
+                EventChoice("Ignore it", "The hole only got deeper.", listOf(happy(-4))),
+            ),
+        ),
+        flavour("work_conference", EventCategory.WORK, "A work conference took you somewhere new.", listOf(smarts(2), happy(1)), stages = ADULT, oneShot = false, weight = 4, condition = employed),
+        flavour("kids_recital", EventCategory.FAMILY, "You beamed through your child's recital.", listOf(happy(4), rel(RelationType.CHILD, 3)), stages = ADULT, oneShot = false, weight = 5, condition = hasChild),
+        flavour("industry_award", EventCategory.WORK, "Your industry recognized your work.", listOf(happy(4), smarts(1)), stages = ADULT, oneShot = false, weight = 3, condition = employed),
+
+        // ==== General breadth — senior =================================
+        LifeEvent(
+            id = "bucket_list",
+            category = EventCategory.RANDOM,
+            prompt = "There's still one thing left on your bucket list.",
+            stages = SENIOR,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("Chase the dream", "You did the thing — at last.", listOf(cash(-3000), happy(7))),
+                EventChoice("Stay content", "You were at peace as you were.", listOf(happy(1))),
+            ),
+        ),
+        LifeEvent(
+            id = "estate_planning",
+            category = EventCategory.MONEY,
+            prompt = "It's time to sort out your estate.",
+            stages = SENIOR,
+            oneShot = true,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Plan carefully", "Your affairs are in order.", listOf(smarts(2), happy(2), flag("estate_planned"))),
+                EventChoice("Put it off", "A worry you kept pushing away.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "old_flame_senior",
+            category = EventCategory.ROMANCE,
+            prompt = "An old flame from decades ago reaches out.",
+            stages = SENIOR,
+            oneShot = false,
+            weight = 3,
+            condition = single,
+            choices = listOf(
+                EventChoice("Rekindle it", "Love, the second time around.", listOf(addPerson(RelationType.PARTNER, 55), happy(6))),
+                EventChoice("Cherish the memory", "Some things are best remembered.", listOf(happy(2))),
+            ),
+        ),
+        LifeEvent(
+            id = "fall_at_home",
+            category = EventCategory.HEALTH,
+            prompt = "You take a bad fall at home.",
+            stages = SENIOR,
+            oneShot = false,
+            weight = 5,
+            choices = listOf(
+                EventChoice("See a doctor", "Better safe than sorry.", listOf(cash(-500), health(2))),
+                EventChoice("Shake it off", "You toughed it out — unwisely.", listOf(health(-5))),
+            ),
+        ),
+        flavour("grandchild_born", EventCategory.FAMILY, "You became a grandparent!", listOf(happy(8)), stages = SENIOR, oneShot = false, weight = 6, condition = hasChild),
+        flavour("senior_mentor", EventCategory.RANDOM, "You mentored young people in your community.", listOf(happy(4), smarts(1)), stages = SENIOR, oneShot = false, weight = 4),
+        flavour("garden_prize", EventCategory.RANDOM, "Your garden won a neighborhood prize.", listOf(happy(4)), stages = SENIOR, oneShot = false, weight = 3),
+        flavour("memoir_published", EventCategory.RANDOM, "A small press published your memoir.", listOf(happy(5), cash(1000)), stages = SENIOR, oneShot = true, weight = 3),
+
+        // ==== General breadth — cross-stage ============================
+        LifeEvent(
+            id = "new_neighbor",
+            category = EventCategory.FAMILY,
+            prompt = "New neighbors just moved in next door.",
+            minAge = 12,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Introduce yourself", "The start of a good friendship.", listOf(addPerson(RelationType.FRIEND, 45), happy(2))),
+                EventChoice("Keep to yourself", "You stayed a stranger.", listOf(happy(-1))),
+            ),
+        ),
+        LifeEvent(
+            id = "reconnect_sibling",
+            category = EventCategory.FAMILY,
+            prompt = "You've grown distant from a sibling.",
+            oneShot = false,
+            weight = 4,
+            condition = { st -> st.relationships.any { it.relation == RelationType.SIBLING && it.alive } },
+            choices = listOf(
+                EventChoice("Reach out", "You picked up where you left off.", listOf(rel(RelationType.SIBLING, 8), happy(3))),
+                EventChoice("Let it be", "The gap quietly widened.", listOf(rel(RelationType.SIBLING, -4))),
+            ),
+        ),
+        LifeEvent(
+            id = "act_of_kindness",
+            category = EventCategory.RANDOM,
+            prompt = "You come across someone who's clearly in need.",
+            minAge = 10,
+            oneShot = false,
+            weight = 4,
+            choices = listOf(
+                EventChoice("Help generously", "It cost you, but it was worth it.", listOf(cash(-200), happy(4))),
+                EventChoice("Give what you can", "Every little bit helped.", listOf(cash(-20), happy(2))),
+                EventChoice("Walk on by", "You told yourself it wasn't your problem.", listOf(happy(-1))),
+            ),
+        ),
+        flavour("found_talent", EventCategory.RANDOM, "You discovered a hidden talent.", listOf(happy(3), smarts(1)), minAge = 8, oneShot = false, weight = 4),
+        flavour("learned_instrument", EventCategory.RANDOM, "You picked up a musical instrument.", listOf(happy(3), smarts(1)), minAge = 8, oneShot = false, weight = 3),
+        flavour("power_outage", EventCategory.FAMILY, "A long power outage turned into cozy family nights.", listOf(happy(2)), minAge = 6, oneShot = false, weight = 3),
+        flavour("community_honor", EventCategory.RANDOM, "Your community honored your contributions.", listOf(happy(4)), minAge = 18, oneShot = false, weight = 3),
+        flavour("hard_year", EventCategory.RANDOM, "A hard year tested you — and you made it through.", listOf(happy(2), smarts(1)), minAge = 10, oneShot = false, weight = 3),
     )
 
     private val byId: Map<String, LifeEvent> = all.associateBy { it.id }
 
     fun byId(id: String): LifeEvent? = byId[id]
 
-    /** Every event that may fire for [state] this year. */
-    fun eligible(state: GameState): List<LifeEvent> = all.filter { e ->
-        state.age in e.minAge..e.maxAge &&
-            state.stage in e.stages &&
-            (!e.oneShot || e.id !in state.eventsSeen) &&
-            e.condition(state)
+    /** Every event that may fire for [state] this year. Prison events fire only while
+     *  incarcerated; every other event fires only while free. */
+    fun eligible(state: GameState): List<LifeEvent> {
+        val inPrison = state.prison != null
+        return all.filter { e ->
+            e.prisonOnly == inPrison &&
+                state.age in e.minAge..e.maxAge &&
+                state.stage in e.stages &&
+                (!e.oneShot || e.id !in state.eventsSeen) &&
+                e.condition(state)
+        }
     }
 }
 
@@ -1033,6 +1796,7 @@ private fun flavour(
     weight: Int = 10,
     oneShot: Boolean = true,
     condition: (GameState) -> Boolean = { true },
+    prisonOnly: Boolean = false,
 ): LifeEvent = LifeEvent(
     id = id,
     category = category,
@@ -1044,4 +1808,5 @@ private fun flavour(
     weight = weight,
     oneShot = oneShot,
     condition = condition,
+    prisonOnly = prisonOnly,
 )

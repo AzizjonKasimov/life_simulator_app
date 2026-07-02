@@ -1,6 +1,6 @@
 # Life Simulator — Game Design (BitLife-style rebuild)
 
-> **Status:** design draft, pre-implementation. This document is the single target
+> **Status:** M1–M2 shipped; M3 (depth) built (generations pending). This document is the single target
 > every build session works toward. When something here changes, change it *here first*.
 
 ## 1. Vision
@@ -328,6 +328,9 @@ Reuse the existing blob store unchanged in shape:
   → new **Life**, **Activities**, **People**, **Profile**, **Legacy** screens.
 
 ## 18. Build roadmap
+
+> **Progress (2026-07-02):** M1 shipped as v0.10.0, M2 as v0.11.0, and M3 depth is built
+> (unreleased). Only M3's optional *generations* remains before M4 polish.
 
 - **M1 — Playable skeleton (the thin slice).** Character creation, four stats, life
   stages, the Age Up loop, the event engine + ~40–50 events, parents + siblings, ~5

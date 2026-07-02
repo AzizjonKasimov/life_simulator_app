@@ -1,5 +1,6 @@
 package com.azizjonkasimov.lifesimulator.domain.engine
 
+import com.azizjonkasimov.lifesimulator.domain.model.Ailment
 import com.azizjonkasimov.lifesimulator.domain.model.Character
 import com.azizjonkasimov.lifesimulator.domain.model.Education
 import com.azizjonkasimov.lifesimulator.domain.model.EducationLevel
@@ -10,6 +11,7 @@ import com.azizjonkasimov.lifesimulator.domain.model.Gender
 import com.azizjonkasimov.lifesimulator.domain.model.LifeEvent
 import com.azizjonkasimov.lifesimulator.domain.model.LogEntry
 import com.azizjonkasimov.lifesimulator.domain.model.LogKind
+import com.azizjonkasimov.lifesimulator.domain.model.Prison
 import com.azizjonkasimov.lifesimulator.domain.model.Person
 import com.azizjonkasimov.lifesimulator.domain.model.RelationType
 import com.azizjonkasimov.lifesimulator.domain.model.SimulationResult
@@ -54,6 +56,14 @@ class LifeSimulationEngine {
             looks = 35 + rng.nextInt(0, 41),
         ).clamped()
         val genderWord = if (gender == Gender.MALE) "a baby boy" else "a baby girl"
+        val traits = TraitCatalog.roll(rng)
+        val traitLabels = traits.mapNotNull { TraitCatalog.byId(it)?.label }
+        val birthLog = buildList {
+            add(LogEntry(0, "You were born $genderWord in $birthplace.", LogKind.MILESTONE))
+            if (traitLabels.isNotEmpty()) {
+                add(LogEntry(0, "You have a ${traitLabels.joinToString(", ")} streak.", LogKind.NEUTRAL))
+            }
+        }
         return GameState(
             character = Character(fullName, gender, birthplace, age = 0, stats = stats, money = 0),
             relationships = Names.startingFamily(rng, familyName),
@@ -64,8 +74,9 @@ class LifeSimulationEngine {
             pendingEventIds = emptyList(),
             activitiesUsed = emptySet(),
             rngSeed = seed,
-            log = listOf(LogEntry(0, "You were born $genderWord in $birthplace.", LogKind.MILESTONE)),
+            log = birthLog,
             alive = true,
+            traits = traits,
         )
     }
 
@@ -83,9 +94,13 @@ class LifeSimulationEngine {
             activitiesUsed = emptySet(),
         )
 
+        s = progressPrison(s, logs)
         s = applyAnnualDrift(s)
-        s = payAndPromote(s, newAge, logs)
-        s = progressEducation(s, logs)
+        s = progressHealth(s, rng, logs)
+        if (!s.inPrison) {
+            s = payAndPromote(s, newAge, logs)
+            s = progressEducation(s, logs)
+        }
         s = ageRelationships(s, rng, logs)
 
         rollDeath(s, rng)?.let { cause ->
@@ -95,7 +110,7 @@ class LifeSimulationEngine {
                 pendingEventIds = emptyList(),
                 log = s.log + logs + LogEntry(newAge, "You died at $newAge from $cause.", LogKind.MILESTONE),
             )
-            return SimulationResult.success(dead, messages = listOf("You died at age $newAge."))
+            return SimulationResult.success(applyAchievements(dead), messages = listOf("You died at age $newAge."))
         }
 
         val eligible = EventCatalog.eligible(s)
@@ -118,6 +133,7 @@ class LifeSimulationEngine {
             log = s.log + logs,
         )
         s = checkHealthDeath(s)
+        s = applyAchievements(s)
         return SimulationResult.success(s, messages = listOf(if (s.alive) "You are now $newAge." else "You died at age $newAge."))
     }
 
@@ -134,6 +150,7 @@ class LifeSimulationEngine {
             log = s.log + LogEntry(s.age, choice.resultText, logKindFor(event.category)),
         )
         s = checkHealthDeath(s)
+        s = applyAchievements(s)
         return SimulationResult.success(
             s,
             statChanges = statChanges(beforeStats, beforeMoney, s.character.stats, s.character.money),
@@ -147,6 +164,8 @@ class LifeSimulationEngine {
         if (state.age < activity.minAge) return SimulationResult.failure(state, "You're too young for that.")
         if (activity.requiresUnemployed && state.job != null) return SimulationResult.failure(state, "You already have a job.")
         if (!activity.requires(state)) return SimulationResult.failure(state, "You can't do that right now.")
+        if (state.inPrison && activity.category != ActivityCategory.PRISON) return SimulationResult.failure(state, "You can't do that from prison.")
+        if (!state.inPrison && activity.category == ActivityCategory.PRISON) return SimulationResult.failure(state, "You're not in prison.")
         if (activityId in state.activitiesUsed) return SimulationResult.failure(state, "You've already done that this year.")
         if (state.character.money < activity.cost) return SimulationResult.failure(state, "You can't afford that.")
 
@@ -159,6 +178,7 @@ class LifeSimulationEngine {
 
         val (afterSpecial, logs, messages) = handleSpecial(s, activity)
         s = afterSpecial.copy(log = afterSpecial.log + logs)
+        s = applyAchievements(s)
         return SimulationResult.success(
             s,
             messages = messages,
@@ -235,12 +255,21 @@ class LifeSimulationEngine {
                     text = "${person.name} turned down your request for money."; message = "They said no."
                 }
             }
+            "take_trip" -> {
+                effects += cashE(-TRIP_COST); effects += Effect.RelationshipDelta(14, personId = personId); effects += happy(5)
+                text = "You and ${person.name} took a memorable trip together."; message = "A wonderful trip with ${person.name}."
+            }
+            "ask_advice" -> {
+                effects += Effect.RelationshipDelta(4, personId = personId); effects += smartsE(1)
+                text = "${person.name} gave you some thoughtful advice."
+            }
             else -> return SimulationResult.failure(state, "You can't do that.")
         }
 
         var s = applyEffects(state, effects)
         s = s.copy(log = s.log + LogEntry(s.age, text, LogKind.RELATIONSHIP))
         s = checkHealthDeath(s)
+        s = applyAchievements(s)
 
         val changes = statChanges(beforeStats, beforeMoney, s.character.stats, s.character.money).toMutableList()
         val relAfter = s.relationships.find { it.id == personId }?.relationship ?: relBefore
@@ -252,8 +281,14 @@ class LifeSimulationEngine {
 
     fun availableActivities(state: GameState): List<ActivityOption> {
         if (!state.alive) return emptyList()
+        val inPrison = state.inPrison
         return ActivityCatalog.all
-            .filter { state.age >= it.minAge && !(it.requiresUnemployed && state.job != null) && it.requires(state) }
+            .filter {
+                (if (inPrison) it.category == ActivityCategory.PRISON else it.category != ActivityCategory.PRISON) &&
+                    state.age >= it.minAge &&
+                    !(it.requiresUnemployed && state.job != null) &&
+                    it.requires(state)
+            }
             .map { activity ->
                 val reason = when {
                     activity.id in state.activitiesUsed -> "Done this year"
@@ -277,20 +312,28 @@ class LifeSimulationEngine {
             InteractionOption("compliment", "Compliment", true, null),
             InteractionOption("gift", "Give a gift", cash >= GIFT_COST, if (cash >= GIFT_COST) null else "Costs ${money(GIFT_COST)}"),
         )
+        val canTrip = cash >= TRIP_COST
+        val tripReason = if (canTrip) null else "Costs ${money(TRIP_COST)}"
         when (person.relation) {
             RelationType.PARTNER -> {
                 val ready = person.relationship >= 55 && state.age >= 18
                 options += InteractionOption("propose", "Propose", ready, if (ready) null else "They're not ready")
+                options += InteractionOption("take_trip", "Take a trip", canTrip, tripReason)
                 options += InteractionOption("break_up", "Break up", true, null)
             }
             RelationType.SPOUSE -> {
                 val kids = state.relationships.count { it.relation == RelationType.CHILD }
                 options += InteractionOption("have_child", "Have a child", kids < 6, if (kids < 6) null else "Your hands are full")
+                options += InteractionOption("take_trip", "Take a trip", canTrip, tripReason)
                 options += InteractionOption("ask_money", "Ask for money", true, null)
                 options += InteractionOption("divorce", "Divorce", true, null)
             }
             RelationType.MOTHER, RelationType.FATHER -> {
+                options += InteractionOption("ask_advice", "Ask for advice", true, null)
                 options += InteractionOption("ask_money", "Ask for money", true, null)
+            }
+            RelationType.FRIEND -> {
+                options += InteractionOption("ask_advice", "Ask for advice", true, null)
             }
             else -> Unit
         }
@@ -306,6 +349,9 @@ class LifeSimulationEngine {
         var flags = state.flags
         var job = state.job
         var jobYears = state.jobYears
+        var ailments = state.ailments
+        var assets = state.assets
+        var prison = state.prison
         val familyName = character.name.substringAfterLast(' ', "")
         for (effect in effects) {
             when (effect) {
@@ -328,28 +374,78 @@ class LifeSimulationEngine {
                 is Effect.RemovePeople -> relationships = relationships.filterNot { it.relation == effect.relation }
                 is Effect.PromoteJob -> job?.let { held -> JobCatalog.promoted(held)?.let { job = it; jobYears = 0 } }
                 is Effect.LoseJob -> { job = null; jobYears = 0 }
+                is Effect.AddAilment -> {
+                    if (ailments.none { it.id == effect.id }) {
+                        val rng = rngFor(state.rngSeed, character.age, "ailment-${effect.id}-${ailments.size}")
+                        HealthCatalog.ailment(effect.id, rng)?.let { ailments = ailments + it }
+                    }
+                }
+                is Effect.CureAilments -> ailments = emptyList()
+                is Effect.Imprison -> {
+                    prison = Prison(sentence = effect.years.coerceAtLeast(1))
+                    job = null
+                    jobYears = 0
+                }
+                is Effect.Release -> {
+                    prison = null
+                    flags = flags + "ex_convict"
+                }
+                is Effect.AddAsset -> AssetCatalog.spec(effect.id)?.let { spec ->
+                    AssetCatalog.asset(effect.id, assets.size)?.let { asset ->
+                        assets = assets + asset
+                        character = character.copy(stats = character.stats.withDelta(Stat.HAPPINESS, spec.happiness))
+                        spec.flag?.let { flags = flags + it }
+                    }
+                }
             }
         }
-        return state.copy(character = character, relationships = relationships, flags = flags, job = job, jobYears = jobYears)
+        return state.copy(
+            character = character,
+            relationships = relationships,
+            flags = flags,
+            job = job,
+            jobYears = jobYears,
+            ailments = ailments,
+            assets = assets,
+            prison = prison,
+        )
     }
 
     private fun applyAnnualDrift(state: GameState): GameState {
         val age = state.age
-        val healthDrift = when {
+        var healthDrift = when {
             age < 30 -> 0
             age < 50 -> -1
             age < 65 -> -2
             age < 80 -> -3
             else -> -4
         }
-        val looksDrift = when {
+        var looksDrift = when {
             age in 1..17 -> 1
             age > 35 -> -1
             else -> 0
         }
-        val stats = state.character.stats
-            .copy(health = state.character.stats.health + healthDrift, looks = state.character.stats.looks + looksDrift)
-            .clamped()
+        var smartsDrift = 0
+        var happinessDrift = 0
+        // Traits colour the drift: health traits run lifelong (offsetting age); the
+        // rest shape you during your formative years, so effects stay bounded.
+        val formative = age in 1..25
+        for (id in state.traits) {
+            val t = TraitCatalog.byId(id) ?: continue
+            healthDrift += t.healthDrift
+            if (formative) {
+                smartsDrift += t.smartsDrift
+                looksDrift += t.looksDrift
+                happinessDrift += t.happinessDrift
+            }
+        }
+        val base = state.character.stats
+        val stats = base.copy(
+            happiness = base.happiness + happinessDrift,
+            health = base.health + healthDrift,
+            smarts = base.smarts + smartsDrift,
+            looks = base.looks + looksDrift,
+        ).clamped()
         return state.copy(character = state.character.copy(stats = stats))
     }
 
@@ -411,6 +507,54 @@ class LifeSimulationEngine {
         }
     }
 
+    /** Serve another year inside; release when the sentence is up. */
+    private fun progressPrison(state: GameState, logs: MutableList<LogEntry>): GameState {
+        val prison = state.prison ?: return state
+        val served = prison.served + 1
+        return if (served >= prison.sentence) {
+            logs += LogEntry(state.age, "You were released from prison.", LogKind.MILESTONE)
+            state.copy(prison = null, flags = state.flags + "ex_convict")
+        } else {
+            val left = prison.sentence - served
+            logs += LogEntry(state.age, "Another year behind bars — $left to go.", LogKind.NEUTRAL)
+            state.copy(prison = prison.copy(served = served))
+        }
+    }
+
+    /** Chronic conditions drain Health, acute ones tick toward recovery, and a new
+     *  age-weighted condition may appear. */
+    private fun progressHealth(state: GameState, rng: Random, logs: MutableList<LogEntry>): GameState {
+        var stats = state.character.stats
+        val surviving = mutableListOf<Ailment>()
+        for (a in state.ailments) {
+            stats = stats.withDelta(Stat.HEALTH, -a.annualDrain)
+            when {
+                a.chronic -> surviving += a
+                a.yearsLeft - 1 <= 0 -> logs += LogEntry(state.age, "You recovered from ${a.name}.", LogKind.HEALTH)
+                else -> surviving += a.copy(yearsLeft = a.yearsLeft - 1)
+            }
+        }
+        var result = state.copy(character = state.character.copy(stats = stats), ailments = surviving)
+        // No spontaneous onset while inside — prison health is handled by its events.
+        if (!result.inPrison) {
+            HealthCatalog.rollOnset(result, rng)?.let { onset ->
+                result = result.copy(ailments = result.ailments + onset)
+                logs += LogEntry(state.age, "You were diagnosed with ${onset.name}.", LogKind.HEALTH)
+            }
+        }
+        return result
+    }
+
+    /** Unlock any achievements whose condition now holds, logging each. */
+    private fun applyAchievements(state: GameState): GameState {
+        val newly = AchievementCatalog.all.filter { it.id !in state.achievements && it.predicate(state) }
+        if (newly.isEmpty()) return state
+        return state.copy(
+            achievements = state.achievements + newly.map { it.id },
+            log = state.log + newly.map { LogEntry(state.age, "Achievement unlocked: ${it.name}.", LogKind.MILESTONE) },
+        )
+    }
+
     private fun ageRelationships(state: GameState, rng: Random, logs: MutableList<LogEntry>): GameState {
         val updated = state.relationships.map { person ->
             if (!person.alive) return@map person
@@ -450,8 +594,9 @@ class LifeSimulationEngine {
         return when {
             roll < ACCIDENT_CHANCE -> listOf("a car accident", "a freak accident", "a bad fall").random(rng)
             roll < ACCIDENT_CHANCE + chance -> when {
+                health < 30 -> state.ailments.maxByOrNull { it.severity }?.let { "complications from ${it.name}" }
+                    ?: if (age >= 70) "old age" else "a sudden illness"
                 age >= 70 -> "old age"
-                health < 25 -> "a sudden illness"
                 else -> "natural causes"
             }
             else -> null
@@ -460,10 +605,11 @@ class LifeSimulationEngine {
 
     // ---- Activity specials -------------------------------------------------
 
-    private fun handleSpecial(state: GameState, activity: Activity): Triple<GameState, List<LogEntry>, List<String>> =
-        when (activity.special) {
-            "find_job" -> tryFindJob(state).let { (s, log, msg) -> Triple(s, listOf(log), listOf(msg)) }
-            "quit_job" -> {
+    private fun handleSpecial(state: GameState, activity: Activity): Triple<GameState, List<LogEntry>, List<String>> {
+        val special = activity.special
+        return when {
+            special == "find_job" -> tryFindJob(state).let { (s, log, msg) -> Triple(s, listOf(log), listOf(msg)) }
+            special == "quit_job" -> {
                 val title = state.job?.title ?: "your job"
                 Triple(
                     state.copy(job = null, jobYears = 0),
@@ -471,19 +617,115 @@ class LifeSimulationEngine {
                     listOf("You quit your job."),
                 )
             }
-            "enroll_university" -> enroll(state, EducationLevel.UNIVERSITY, years = 4)
-            "enroll_grad" -> enroll(state, EducationLevel.GRADUATE, years = 2)
-            "date" -> goOnDate(state)
-            "adopt_pet" -> {
+            special == "enroll_university" -> enroll(state, EducationLevel.UNIVERSITY, years = 4)
+            special == "enroll_grad" -> enroll(state, EducationLevel.GRADUATE, years = 2)
+            special == "date" -> goOnDate(state)
+            special == "adopt_pet" -> {
                 val s = applyEffects(state, listOf(Effect.AddPerson(RelationType.PET, 70), happy(4)))
                 val pet = s.relationships.last()
                 Triple(s, listOf(LogEntry(s.age, "You adopted ${pet.name}.", LogKind.RELATIONSHIP)), listOf("You adopted ${pet.name}!"))
             }
+            special == "treat" -> getTreatment(state)
+            special == "good_behavior" -> goodBehavior(state)
+            special != null && special.startsWith("crime:") -> commitCrime(state, special.removePrefix("crime:"))
+            special != null && special.startsWith("buy:") -> buyAsset(state, special.removePrefix("buy:"))
             else -> {
                 val logs = if (activity.logText.isNotBlank()) listOf(LogEntry(state.age, activity.logText, activity.logKind)) else emptyList()
                 Triple(state, logs, emptyList())
             }
         }
+    }
+
+    /** Attempt a crime: pull it off for a payoff, or get caught and sentenced. */
+    private fun commitCrime(state: GameState, crimeId: String): Triple<GameState, List<LogEntry>, List<String>> {
+        val crime = CrimeCatalog.byId(crimeId) ?: return Triple(state, emptyList(), emptyList())
+        val rng = rngFor(state.rngSeed, state.age, "crime-$crimeId-${state.log.size}")
+        val smarts = state.character.stats.smarts
+        val lucky = "lucky" in state.traits
+        val catch = (crime.catchChance - smarts / 400.0 - (if (lucky) 0.08 else 0.0)).coerceIn(0.05, 0.95)
+        return if (rng.nextDouble() < catch) {
+            val sentence = crime.sentence.first + rng.nextInt(0, crime.sentence.last - crime.sentence.first + 1)
+            val years = if (sentence == 1) "1 year" else "$sentence years"
+            val s = applyEffects(state, listOf(Effect.Imprison(sentence), happy(-6)))
+            Triple(
+                s,
+                listOf(LogEntry(s.age, "${crime.label}: you were caught and sentenced to $years in prison.", LogKind.MILESTONE)),
+                listOf("Busted — $years inside."),
+            )
+        } else {
+            val loot = crime.payoff.first + rng.nextInt(0, crime.payoff.last - crime.payoff.first + 1)
+            val s = applyEffects(state, listOf(cashE(loot), happy(2), Effect.AddFlag("criminal")))
+            Triple(
+                s,
+                listOf(LogEntry(s.age, "${crime.label}: you got away with ${money(loot)}.", LogKind.MONEY)),
+                listOf("You got away with ${money(loot)}!"),
+            )
+        }
+    }
+
+    /** Seek medical care: acute conditions usually clear, chronic ones with a chance. */
+    private fun getTreatment(state: GameState): Triple<GameState, List<LogEntry>, List<String>> {
+        if (state.ailments.isEmpty()) return Triple(state, emptyList(), emptyList())
+        val rng = rngFor(state.rngSeed, state.age, "treat-${state.log.size}")
+        val remaining = mutableListOf<Ailment>()
+        val cured = mutableListOf<String>()
+        for (a in state.ailments) {
+            val chance = when {
+                !a.chronic -> 0.85
+                a.severity >= 3 -> 0.35
+                a.severity == 2 -> 0.5
+                else -> 0.65
+            }
+            if (rng.nextDouble() < chance) cured += a.name else remaining += a
+        }
+        val s = state.copy(
+            ailments = remaining,
+            character = state.character.copy(stats = state.character.stats.withDelta(Stat.HEALTH, 6)),
+        )
+        return if (cured.isNotEmpty()) {
+            Triple(
+                s,
+                listOf(LogEntry(s.age, "Treatment cleared: ${cured.joinToString(", ")}.", LogKind.HEALTH)),
+                listOf("Recovered from ${cured.size} condition${if (cured.size == 1) "" else "s"}."),
+            )
+        } else {
+            Triple(
+                s,
+                listOf(LogEntry(s.age, "The treatment helped you cope, but didn't beat it this time.", LogKind.HEALTH)),
+                listOf("No cure this round, but you're managing."),
+            )
+        }
+    }
+
+    /** Buy an asset (the price was already paid); records it and lifts your mood. */
+    private fun buyAsset(state: GameState, specId: String): Triple<GameState, List<LogEntry>, List<String>> {
+        val spec = AssetCatalog.spec(specId) ?: return Triple(state, emptyList(), emptyList())
+        val s = applyEffects(state, listOf(Effect.AddAsset(specId)))
+        return Triple(
+            s,
+            listOf(LogEntry(s.age, "You bought a ${spec.name.lowercase()}.", LogKind.MONEY)),
+            listOf("You bought a ${spec.name}!"),
+        )
+    }
+
+    /** Keep your nose clean inside for a chance at a shorter sentence. */
+    private fun goodBehavior(state: GameState): Triple<GameState, List<LogEntry>, List<String>> {
+        val prison = state.prison ?: return Triple(state, emptyList(), emptyList())
+        val rng = rngFor(state.rngSeed, state.age, "parole-${state.log.size}")
+        return if (prison.sentence > 1 && rng.nextDouble() < 0.35) {
+            Triple(
+                state.copy(prison = prison.copy(sentence = prison.sentence - 1)),
+                listOf(LogEntry(state.age, "Good behaviour earned you a year off your sentence.", LogKind.NEUTRAL)),
+                listOf("A year off your sentence!"),
+            )
+        } else {
+            Triple(
+                state,
+                listOf(LogEntry(state.age, "You kept your head down this year.", LogKind.NEUTRAL)),
+                listOf("You stayed out of trouble."),
+            )
+        }
+    }
 
     private fun enroll(state: GameState, target: EducationLevel, years: Int): Triple<GameState, List<LogEntry>, List<String>> {
         val s = state.copy(education = state.education.copy(enrolledIn = target, yearsLeft = years))
@@ -593,6 +835,7 @@ class LifeSimulationEngine {
     }
 
     private fun happy(amount: Int) = Effect.StatDelta(Stat.HAPPINESS, amount)
+    private fun smartsE(amount: Int) = Effect.StatDelta(Stat.SMARTS, amount)
     private fun cashE(amount: Int) = Effect.MoneyDelta(amount)
 
     private fun rngFor(seed: Long, age: Int, salt: String): Random {
@@ -607,6 +850,7 @@ class LifeSimulationEngine {
     private companion object {
         const val ACCIDENT_CHANCE = 0.0008
         const val GIFT_COST = 100
+        const val TRIP_COST = 800
         const val UNI_TUITION = 4000
         const val GRAD_TUITION = 8000
     }

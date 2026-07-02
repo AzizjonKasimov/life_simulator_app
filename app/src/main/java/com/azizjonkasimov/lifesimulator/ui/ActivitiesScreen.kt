@@ -10,16 +10,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsBoat
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.FlightTakeoff
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Healing
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Nightlife
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VolunteerActivism
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -30,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.azizjonkasimov.lifesimulator.domain.engine.ActivityCategory
 import com.azizjonkasimov.lifesimulator.domain.engine.ActivityOption
 
 @Composable
@@ -37,6 +46,7 @@ fun ActivitiesScreen(
     activities: List<ActivityOption>,
     onActivity: (String) -> Unit,
 ) {
+    val grouped = activities.groupBy { it.activity.category }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -48,8 +58,22 @@ fun ActivitiesScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        items(activities) { option ->
-            ActivityRow(option = option, onActivity = onActivity)
+        ActivityCategory.entries.forEach { category ->
+            val options = grouped[category].orEmpty()
+            if (options.isNotEmpty()) {
+                item(key = "hdr_${category.name}") {
+                    Text(
+                        text = category.label,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+                items(options, key = { it.activity.id }) { option ->
+                    ActivityRow(option = option, onActivity = onActivity)
+                }
+            }
         }
     }
 }
@@ -93,17 +117,26 @@ private fun ActivityRow(
     }
 }
 
-private fun activityIcon(id: String): ImageVector = when (id) {
-    "gym" -> Icons.Filled.FitnessCenter
-    "study" -> Icons.Filled.School
-    "doctor" -> Icons.Filled.LocalHospital
-    "meditate" -> Icons.Filled.SelfImprovement
-    "volunteer" -> Icons.Filled.VolunteerActivism
-    "night_out" -> Icons.Filled.Nightlife
-    "vacation" -> Icons.Filled.FlightTakeoff
-    "date" -> Icons.Filled.Favorite
-    "adopt_pet" -> Icons.Filled.Pets
-    "enroll_university", "enroll_grad" -> Icons.Filled.School
-    "find_job", "quit_job" -> Icons.Filled.Work
+private fun activityIcon(id: String): ImageVector = when {
+    id == "gym" -> Icons.Filled.FitnessCenter
+    id == "study" -> Icons.Filled.School
+    id == "doctor" -> Icons.Filled.LocalHospital
+    id == "treatment" -> Icons.Filled.Healing
+    id == "meditate" -> Icons.Filled.SelfImprovement
+    id == "volunteer" -> Icons.Filled.VolunteerActivism
+    id == "night_out" -> Icons.Filled.Nightlife
+    id == "vacation" -> Icons.Filled.FlightTakeoff
+    id == "date" -> Icons.Filled.Favorite
+    id == "adopt_pet" -> Icons.Filled.Pets
+    id == "enroll_university" || id == "enroll_grad" -> Icons.Filled.School
+    id == "find_job" || id == "quit_job" -> Icons.Filled.Work
+    id == "prison_workout" -> Icons.Filled.FitnessCenter
+    id == "good_behavior" -> Icons.Filled.Lock
+    id.startsWith("crime_") -> Icons.Filled.Gavel
+    id == "buy_used_car" || id == "buy_new_car" || id == "buy_sports_car" -> Icons.Filled.DirectionsCar
+    id == "buy_condo" || id == "buy_house" || id == "buy_mansion" -> Icons.Filled.Home
+    id == "buy_watch" -> Icons.Filled.Watch
+    id == "buy_yacht" -> Icons.Filled.DirectionsBoat
+    id.startsWith("buy_") -> Icons.Filled.ShoppingBag
     else -> Icons.Filled.Star
 }

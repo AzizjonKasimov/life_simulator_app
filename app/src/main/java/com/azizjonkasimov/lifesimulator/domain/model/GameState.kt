@@ -53,7 +53,22 @@ data class GameState(
     val causeOfDeath: String? = null,
     /** Years spent at the current job rung; feeds promotion cadence. Resets on any job change. */
     val jobYears: Int = 0,
+    /** Active health conditions dragging on Health each year (M3). */
+    val ailments: List<Ailment> = emptyList(),
+    /** Current incarceration, or null when free (M3). */
+    val prison: Prison? = null,
+    /** Owned possessions — cars, property, luxuries — counted toward net worth (M3). */
+    val assets: List<Asset> = emptyList(),
+    /** Personality traits rolled at birth; nudge drift and gate events (M3). */
+    val traits: Set<String> = emptySet(),
+    /** Unlocked achievement ids (M3). */
+    val achievements: Set<String> = emptySet(),
 ) {
     val age: Int get() = character.age
     val stage: LifeStage get() = LifeStage.forAge(character.age)
+
+    /** Cash plus the worth of everything you own. */
+    val netWorth: Int get() = character.money + assets.sumOf { it.value }
+
+    val inPrison: Boolean get() = prison != null
 }

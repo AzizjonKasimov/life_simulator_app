@@ -1,5 +1,8 @@
 package com.azizjonkasimov.lifesimulator.data
 
+import com.azizjonkasimov.lifesimulator.domain.model.Ailment
+import com.azizjonkasimov.lifesimulator.domain.model.Asset
+import com.azizjonkasimov.lifesimulator.domain.model.AssetKind
 import com.azizjonkasimov.lifesimulator.domain.model.Character
 import com.azizjonkasimov.lifesimulator.domain.model.Education
 import com.azizjonkasimov.lifesimulator.domain.model.EducationLevel
@@ -10,6 +13,7 @@ import com.azizjonkasimov.lifesimulator.domain.model.JobField
 import com.azizjonkasimov.lifesimulator.domain.model.LogEntry
 import com.azizjonkasimov.lifesimulator.domain.model.LogKind
 import com.azizjonkasimov.lifesimulator.domain.model.Person
+import com.azizjonkasimov.lifesimulator.domain.model.Prison
 import com.azizjonkasimov.lifesimulator.domain.model.RelationType
 import com.azizjonkasimov.lifesimulator.domain.model.Stats
 import org.json.JSONArray
@@ -38,6 +42,11 @@ object GameStateJsonCodec {
         .put("log", JSONArray().apply { state.log.forEach { put(it.toJson()) } })
         .put("alive", state.alive)
         .put("causeOfDeath", state.causeOfDeath ?: JSONObject.NULL)
+        .put("ailments", JSONArray().apply { state.ailments.forEach { put(it.toJson()) } })
+        .put("prison", state.prison?.toJson() ?: JSONObject.NULL)
+        .put("assets", JSONArray().apply { state.assets.forEach { put(it.toJson()) } })
+        .put("traits", state.traits.toJsonArray())
+        .put("achievements", state.achievements.toJsonArray())
         .toString()
 
     fun decode(raw: String): GameState {
@@ -56,6 +65,11 @@ object GameStateJsonCodec {
             log = root.getJSONArray("log").map { it.toLogEntry() },
             alive = root.optBoolean("alive", true),
             causeOfDeath = if (root.isNull("causeOfDeath")) null else root.optString("causeOfDeath", "").ifBlank { null },
+            ailments = root.optJSONArray("ailments")?.map { it.toAilment() } ?: emptyList(),
+            prison = root.optJSONObject("prison")?.toPrison(),
+            assets = root.optJSONArray("assets")?.map { it.toAsset() } ?: emptyList(),
+            traits = root.optJSONArray("traits")?.toStringSet() ?: emptySet(),
+            achievements = root.optJSONArray("achievements")?.toStringSet() ?: emptySet(),
         )
     }
 
@@ -146,6 +160,45 @@ object GameStateJsonCodec {
         minAge = optInt("minAge", 18),
         minSmarts = optInt("minSmarts", 0),
         requiresDegree = optBoolean("requiresDegree", false),
+    )
+
+    // ---- M3 entities: ailments, prison, assets -----------------------------
+
+    private fun Ailment.toJson(): JSONObject = JSONObject()
+        .put("id", id)
+        .put("name", name)
+        .put("severity", severity)
+        .put("chronic", chronic)
+        .put("yearsLeft", yearsLeft)
+
+    private fun JSONObject.toAilment(): Ailment = Ailment(
+        id = getString("id"),
+        name = getString("name"),
+        severity = optInt("severity", 1),
+        chronic = optBoolean("chronic", false),
+        yearsLeft = optInt("yearsLeft", 0),
+    )
+
+    private fun Prison.toJson(): JSONObject = JSONObject()
+        .put("sentence", sentence)
+        .put("served", served)
+
+    private fun JSONObject.toPrison(): Prison = Prison(
+        sentence = getInt("sentence"),
+        served = optInt("served", 0),
+    )
+
+    private fun Asset.toJson(): JSONObject = JSONObject()
+        .put("id", id)
+        .put("name", name)
+        .put("kind", kind.name)
+        .put("value", value)
+
+    private fun JSONObject.toAsset(): Asset = Asset(
+        id = getString("id"),
+        name = getString("name"),
+        kind = enumOrDefault(getString("kind"), AssetKind.LUXURY),
+        value = getInt("value"),
     )
 
     private fun LogEntry.toJson(): JSONObject = JSONObject()
